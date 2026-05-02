@@ -205,9 +205,13 @@ class YTDLPDownloader:
 
         try:
             opts = self._build_yt_dlp_options(output_path, temp_cookies)
-            url = self.YOUTUBE_MUSIC_URL.format(video_id=video_id)
-
-            logger.debug("Downloading %s to %s", video_id, output_path)
+            # Use URL directly if it's already a full URL (e.g., SoundCloud permalink)
+            if video_id.startswith("http"):
+                url = video_id
+                logger.debug("Downloading %s to %s", url, output_path)
+            else:
+                url = self.YOUTUBE_MUSIC_URL.format(video_id=video_id)
+                logger.debug("Downloading %s to %s", video_id, output_path)
 
             actual_path: Path | None = None
 
@@ -532,6 +536,7 @@ class DownloadService:
         Video ID Selection Priority:
         1. ATV (Audio Track Video) - Album version, best audio quality
         2. OMV (Official Music Video) - Fallback, may have different audio mix
+        3. source_video_id - Fallback for SoundCloud URLs (permalink URL)
 
         Why prefer ATV: Audio Track Videos contain the canonical album version
         with best audio quality. OMVs may have different mixing, radio edits,
@@ -541,17 +546,22 @@ class DownloadService:
             track: Track metadata containing video IDs.
 
         Returns:
-            Video ID to download.
+            Video ID or URL to download.
 
         Raises:
-            DownloadError: If no video ID is available for the track.
+            DownloadError: If no video ID or URL is available for the track.
         """
-        video_id = track.video_id
-        if not video_id:
-            raise DownloadError(
-                f"No video ID available for track: '{track.title}' by {track.artist}"
-            )
-        return video_id
+        # Prefer ATV or OMV video ID for YouTube Music content
+        if track.atv_video_id:
+            return track.atv_video_id
+        if track.omv_video_id:
+            return track.omv_video_id
+        # Fall back to source_video_id (may be a SoundCloud permalink URL)
+        if track.source_video_id:
+            return track.source_video_id
+        raise DownloadError(
+            f"No video ID or URL available for track: '{track.title}' by {track.artist}"
+        )
 
     # ============================================================================
     # PATH CONSTRUCTION - Build output paths from track metadata

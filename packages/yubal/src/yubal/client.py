@@ -102,6 +102,23 @@ class SoundCloudProtocol(Protocol):
         """
         ...
 
+    def extract(self, url: str) -> SoundCloudTrack | SoundCloudSet:
+        """Extract metadata from a SoundCloud URL (track or set).
+
+        Auto-detects the URL type and returns the appropriate model.
+
+        Args:
+            url: SoundCloud track or set URL.
+
+        Returns:
+            Parsed SoundCloudTrack or SoundCloudSet model.
+
+        Raises:
+            SoundCloudParseError: If metadata cannot be parsed.
+            SoundCloudUnavailableError: If the content is private or removed.
+        """
+        ...
+
 
 class MusicBrainzProtocol(Protocol):
     """Protocol for MusicBrainz API clients.
@@ -758,6 +775,26 @@ class SoundCloudClient:
             artwork_url=track.artwork_url,
             permalink_url=track.permalink_url,
         )
+
+    def extract(self, url: str) -> SoundCloudTrack | SoundCloudSet:
+        """Extract metadata from a SoundCloud URL (track or set).
+
+        Auto-detects the URL type and returns the appropriate model.
+
+        Args:
+            url: SoundCloud track or set URL.
+
+        Returns:
+            Parsed SoundCloudTrack or SoundCloudSet model.
+
+        Raises:
+            SoundCloudParseError: If metadata cannot be parsed.
+            SoundCloudUnavailableError: If the content is private or removed.
+        """
+        # Check for set URL pattern
+        if "/sets/" in url:
+            return self.get_set(url)
+        return self.get_track(url)
 
     def _parse_track(self, data: dict[str, Any]) -> SoundCloudTrack:
         """Parse a yt-dlp JSON response into a SoundCloudTrack.
