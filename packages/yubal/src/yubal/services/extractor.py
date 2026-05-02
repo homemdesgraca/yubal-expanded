@@ -30,7 +30,7 @@ def _format_artists(artists: list[Artist]) -> str:
     return "; ".join(a.name for a in artists if a.name)
 
 
-def _upscale_thumbnail_url(url: str, size: int = 544) -> str:
+def _upscale_thumbnail_url(url: str, size: int = 1200) -> str:
     """Replace size parameters in a Google thumbnail URL to request a larger image.
 
     YouTube Music thumbnails are hosted on lh3.googleusercontent.com and support

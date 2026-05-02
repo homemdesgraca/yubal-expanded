@@ -8,7 +8,7 @@ from yubal import is_supported_url
 from yubal_api.domain.job import Job
 
 
-def validate_youtube_music_url(url: str) -> str:
+def validate_supported_url(url: str) -> str:
     """Validate that the URL is supported by yubal.
 
     Uses yubal's is_supported_url() as the source of truth to ensure
@@ -17,16 +17,16 @@ def validate_youtube_music_url(url: str) -> str:
     url = url.strip()
     if not is_supported_url(url):
         raise ValueError(
-            "Invalid URL. Expected a YouTube or YouTube Music URL "
+            "Invalid URL. Expected a YouTube, YouTube Music, or SoundCloud URL "
             "(e.g., https://youtube.com/watch?v=... or "
-            "https://music.youtube.com/playlist?list=...)"
+            "https://soundcloud.com/artist/track-name)"
         )
     return url
 
 
-YouTubeMusicUrl = Annotated[
+SupportedUrl = Annotated[
     str,
-    AfterValidator(validate_youtube_music_url),
+    AfterValidator(validate_supported_url),
     WithJsonSchema({"type": "string", "format": "uri"}),
 ]
 
@@ -34,11 +34,12 @@ YouTubeMusicUrl = Annotated[
 class CreateJobRequest(BaseModel):
     """Request to create a new sync job."""
 
-    url: YouTubeMusicUrl = Field(
-        description="YouTube or YouTube Music playlist, album, or single track URL",
+    url: SupportedUrl = Field(
+        description="YouTube, YouTube Music, or SoundCloud playlist, album, or track URL",
         examples=[
             "https://music.youtube.com/playlist?list=OLAK5uy_...",
             "https://www.youtube.com/watch?v=VIDEO_ID",
+            "https://soundcloud.com/artist/track-name",
         ],
     )
     max_items: int | None = Field(

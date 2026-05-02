@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isValidUrl, YOUTUBE_URL_PATTERN } from "./url";
+import { isValidUrl, YOUTUBE_URL_PATTERN, SOUNDCLOUD_URL_PATTERN, SUPPORTED_URL_PATTERN } from "./url";
 
 const VALID_YOUTUBE_MUSIC_URLS = [
   "https://music.youtube.com/playlist?list=OLAK5uy_abc123",
@@ -42,10 +42,19 @@ const VALID_PATH_BASED_URLS = [
   "https://youtube.com/vi/dQw4w9WgXcQ",
 ];
 
+const VALID_SOUNDCLOUD_URLS = [
+  "https://soundcloud.com/janeremover/sets/revengeseekerz",
+  "https://soundcloud.com/janeremover/psychoboost-ft-danny-brown",
+  "https://www.soundcloud.com/janeremover/sets/revengeseekerz",
+  "http://soundcloud.com/artist/track-name",
+  "https://soundcloud.com/artist/sets/my-set",
+  "https://www.soundcloud.com/artist/sets/my-set",
+] as const;
+
 const INVALID_URLS = [
   ["empty string", ""],
   ["Spotify URL", "https://spotify.com/playlist/abc"],
-  ["SoundCloud URL", "https://soundcloud.com/track/xyz"],
+  ["SoundCloud track (not a set/track path)", "https://soundcloud.com/track/xyz"],
   ["YouTube homepage", "https://youtube.com/"],
   ["YouTube channel", "https://youtube.com/channel/abc"],
   ["plain text", "not a url"],
@@ -84,6 +93,12 @@ describe("isValidUrl", () => {
     });
   });
 
+  describe("valid SoundCloud URLs", () => {
+    test.each(VALID_SOUNDCLOUD_URLS)("accepts %s", (url) => {
+      expect(isValidUrl(url)).toBe(true);
+    });
+  });
+
   describe("invalid URLs", () => {
     test.each(INVALID_URLS)("rejects %s", (_description, url) => {
       expect(isValidUrl(url)).toBe(false);
@@ -91,8 +106,16 @@ describe("isValidUrl", () => {
   });
 });
 
-describe("YOUTUBE_URL_PATTERN", () => {
-  test("is a valid RegExp", () => {
+describe("URL patterns", () => {
+  test("YOUTUBE_URL_PATTERN is a valid RegExp", () => {
     expect(YOUTUBE_URL_PATTERN).toBeInstanceOf(RegExp);
+  });
+
+  test("SOUNDCLOUD_URL_PATTERN is a valid RegExp", () => {
+    expect(SOUNDCLOUD_URL_PATTERN).toBeInstanceOf(RegExp);
+  });
+
+  test("SUPPORTED_URL_PATTERN is a valid RegExp", () => {
+    expect(SUPPORTED_URL_PATTERN).toBeInstanceOf(RegExp);
   });
 });

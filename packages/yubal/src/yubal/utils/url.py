@@ -21,6 +21,22 @@ _YOUTUBE_HOSTS = {
     "www.youtube-nocookie.com",
 }
 
+# SoundCloud URL patterns
+_SOUNDCLOUD_TRACK_PATTERN = re.compile(
+    r"^(?:https?://)?(?:www\.)?soundcloud\.com/([a-zA-Z0-9_-]+)/([a-zA-Z0-9_-]+)"
+)
+_SOUNDCLOUD_SET_PATTERN = re.compile(
+    r"^(?:https?://)?(?:www\.)?soundcloud\.com/([a-zA-Z0-9_-]+)/sets/([a-zA-Z0-9_-]+)"
+)
+_SOUNDCLOUD_SHORT_PATTERN = re.compile(r"^(?:https?://)?snd\.sc/([a-zA-Z0-9_-]+)")
+
+# Recognized SoundCloud hostnames
+_SOUNDCLOUD_HOSTS = {
+    "soundcloud.com",
+    "www.soundcloud.com",
+    "snd.sc",
+}
+
 # Maximum URL length to prevent potential abuse (standard browser limit)
 MAX_URL_LENGTH = 2048
 
@@ -112,11 +128,64 @@ def is_single_track_url(url: str) -> bool:
     return parse_video_id(url) is not None
 
 
+def is_soundcloud_url(url: str) -> bool:
+    """Check if URL is a SoundCloud URL.
+
+    Args:
+        url: URL to check.
+
+    Returns:
+        True if the URL is a SoundCloud track or set URL.
+    """
+    if not url or len(url) > MAX_URL_LENGTH:
+        return False
+
+    url = url.strip()
+    return (
+        _SOUNDCLOUD_SET_PATTERN.match(url) is not None
+        or _SOUNDCLOUD_TRACK_PATTERN.match(url) is not None
+        or _SOUNDCLOUD_SHORT_PATTERN.match(url) is not None
+    )
+
+
+def parse_soundcloud_id(url: str) -> tuple[str, str] | None:
+    """Extract SoundCloud artist and track/set ID from URL.
+
+    Args:
+        url: SoundCloud URL.
+
+    Returns:
+        Tuple of (artist_slug, item_id) for track/set URLs,
+        or (artist_slug, None) for short URLs.
+        Returns None if URL is not a valid SoundCloud URL.
+    """
+    if not url or len(url) > MAX_URL_LENGTH:
+        return None
+
+    url = url.strip()
+
+    # Set URL: soundcloud.com/artist/sets/set-name (check before track)
+    if match := _SOUNDCLOUD_SET_PATTERN.match(url):
+        return (match.group(1), match.group(2))
+
+    # Track URL: soundcloud.com/artist/track-name
+    if match := _SOUNDCLOUD_TRACK_PATTERN.match(url):
+        return (match.group(1), match.group(2))
+
+    # Short URL: snd.sc/track-id
+    if match := _SOUNDCLOUD_SHORT_PATTERN.match(url):
+        return ("", match.group(1))
+
+    return None
+
+
 def is_supported_url(url: str) -> bool:
     """Check if URL is supported by yubal (playlist, album, or single track).
 
+    Supports YouTube Music and SoundCloud URLs.
+
     Args:
-        url: YouTube or YouTube Music URL.
+        url: YouTube, YouTube Music, or SoundCloud URL.
 
     Returns:
         True if the URL can be processed by yubal, False otherwise.
@@ -126,19 +195,22 @@ def is_supported_url(url: str) -> bool:
 
     url = url.strip()
 
-    # Playlist URL (has list= parameter)
+    # YouTube Music: Playlist URL (has list= parameter)
     if PLAYLIST_ID_PATTERN.search(url):
         return True
-    # Single track URL (has v= parameter without list=)
+    # YouTube Music: Single track URL (has v= parameter without list=)
     if VIDEO_ID_PATTERN.search(url):
         return True
-    # Path-based video URL (youtu.be, shorts, live, embed)
+    # YouTube Music: Path-based video URL (youtu.be, shorts, live, embed)
     if _parse_video_id_from_path(url):
         return True
-    # Browse URL (album pages on music.youtube.com)
+    # YouTube Music: Browse URL (album pages on music.youtube.com)
     parsed = urlparse(url)
     host = parsed.hostname or ""
     path = parsed.path or ""
     if "/browse/" in path and host == "music.youtube.com":
+        return True
+    # SoundCloud: Track or set URL
+    if is_soundcloud_url(url):
         return True
     return False
