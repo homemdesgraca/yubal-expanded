@@ -27,6 +27,21 @@ class APIConfig:
 
 
 @dataclass(frozen=True)
+class MusicBrainzConfig:
+    """MusicBrainz enrichment configuration.
+
+    Attributes:
+        enabled: Whether MusicBrainz enrichment is enabled.
+        search_limit: Maximum number of search results to return per query.
+        match_threshold: Minimum similarity score (0-100) for a confident MB match.
+    """
+
+    enabled: bool = True
+    search_limit: int = 5
+    match_threshold: float = 70.0
+
+
+@dataclass(frozen=True)
 class DownloadConfig:
     """Download service configuration.
 

@@ -5,6 +5,7 @@ import logging
 import re
 import shutil
 import subprocess
+import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -12,7 +13,7 @@ from typing import Any, Protocol, cast
 from ytmusicapi import YTMusic
 from ytmusicapi.exceptions import YTMusicError, YTMusicServerError, YTMusicUserError
 
-from yubal.config import APIConfig
+from yubal.config import APIConfig, MusicBrainzConfig
 from yubal.exceptions import (
     AuthenticationRequiredError,
     PlaylistNotFoundError,
@@ -98,6 +99,32 @@ class SoundCloudProtocol(Protocol):
         Raises:
             SoundCloudParseError: If metadata cannot be parsed.
             SoundCloudUnavailableError: If the set is private or removed.
+        """
+        ...
+
+
+class MusicBrainzProtocol(Protocol):
+    """Protocol for MusicBrainz API clients.
+
+    This protocol enables dependency injection and testing.
+    Implement this protocol to create mock clients for testing.
+    """
+
+    def enrich_track(
+        self,
+        title: str,
+        artists: list[str],
+        duration_seconds: int,
+    ) -> dict[str, Any] | None:
+        """Search MusicBrainz for the best recording match.
+
+        Args:
+            title: Track title.
+            artists: List of artist names.
+            duration_seconds: Track duration for additional matching.
+
+        Returns:
+            Dict with MBID and metadata if a confident match found, None otherwise.
         """
         ...
 
@@ -868,3 +895,258 @@ class SoundCloudClient:
                 except ValueError:
                     pass
         return 0
+
+
+# ============================================================================
+# MUSICBRAINZ CLIENT
+# ============================================================================
+
+
+# Initialize musicbrainzngs once at module level
+_mb_initialized = False
+
+# Lazy import — musicbrainzngs is only needed when enrichment is used
+musicbrainzngs: Any = None  # type: ignore[assignment]
+
+
+def _ensure_mb_initialized() -> None:
+    """Ensure musicbrainzngs is initialized with user agent and rate limit."""
+    global _mb_initialized, musicbrainzngs
+    if not _mb_initialized:
+        import musicbrainzngs as _mb_mod
+
+        musicbrainzngs = _mb_mod
+        musicbrainzngs.set_useragent(
+            "yubal", "0.8.0", "https://github.com/guillevc/yubal"
+        )
+        musicbrainzngs.set_rate_limit(1.0)
+        _mb_initialized = True
+
+
+class MusicBrainzClient:
+    """MusicBrainz enrichment client.
+
+    Searches MusicBrainz for canonical track metadata using the musicbrainzngs
+    library. Used to enrich baseline metadata from SoundCloud (yt-dlp) with
+    authoritative data: year, track number, album name, MBIDs.
+
+    Implements MusicBrainzProtocol for dependency injection.
+
+    Rate limiting: MusicBrainz allows 1 request/second. This client enforces
+    that via ``mb.set_rate_limit(1.0)``. For bulk operations (sets with many
+    tracks), callers should cache results and skip enrichment for large sets.
+    """
+
+    def __init__(self, config: MusicBrainzConfig | None = None) -> None:
+        """Initialize the client.
+
+        Args:
+            config: MusicBrainz configuration. Uses defaults if not provided.
+        """
+        self._config = config or MusicBrainzConfig()
+        _ensure_mb_initialized()
+
+    def enrich_track(
+        self,
+        title: str,
+        artists: list[str],
+        duration_seconds: int,
+    ) -> dict[str, Any] | None:
+        """Search MusicBrainz for the best recording match.
+
+        Search strategy:
+        1. Search recordings with artist + title query
+        2. Use the same fuzzy matching logic as YouTube Music matching
+           (rapidfuzz, 70% threshold)
+        3. If confident match: return MBID + metadata
+        4. If no confident match: return None (caller uses baseline)
+
+        Args:
+            title: Track title.
+            artists: List of artist names.
+            duration_seconds: Track duration for additional validation.
+
+        Returns:
+            Dict with keys ``mbid``, ``release_mbid``, ``release_group_mbid``,
+            ``year``, ``track_number``, ``total_tracks``, ``mb_title``,
+            ``mb_artists``, ``mb_release_title``, ``duration_ms`` if a
+            confident match found.
+            Returns None if no confident match exists.
+        """
+        if not self._config.enabled or not title or not artists:
+            return None
+
+        # Build search query
+        query = f"{title} {artists[0]}"
+        logger.debug(
+            "Searching MusicBrainz: %s (limit=%d)", query, self._config.search_limit
+        )
+
+        try:
+            result = musicbrainzngs.search_recordings(
+                query=query,
+                artist=artists[0],
+                recname=title,
+                limit=self._config.search_limit,
+            )
+        except Exception as e:
+            logger.warning("MusicBrainz search failed for '%s': %s", title, e)
+            return None
+
+        recording_list = result.get("recording-list", [])
+        if not recording_list:
+            return None
+
+        # Find the best match using fuzzy matching
+        best_match = self._find_best_match(
+            title=title,
+            artists=artists,
+            duration_seconds=duration_seconds,
+            recordings=recording_list,
+        )
+
+        if best_match is None:
+            logger.debug(
+                "No confident MusicBrainz match for '%s' by %s",
+                title,
+                "; ".join(artists),
+            )
+            return None
+
+        # Extract metadata from the best match
+        return self._extract_enrichment_data(best_match)
+
+    def _find_best_match(
+        self,
+        title: str,
+        artists: list[str],
+        duration_seconds: int,
+        recordings: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Find the best MusicBrainz recording match.
+
+        Uses the same fuzzy matching logic as YouTube Music matching:
+        1. Title similarity (rapidfuzz, 70% threshold)
+        2. Artist similarity (best pairwise, 70% threshold)
+        3. Duration validation (if available, within 15% tolerance)
+
+        Args:
+            title: Track title.
+            artists: List of artist names.
+            duration_seconds: Track duration for validation.
+            recordings: List of recording dicts from MusicBrainz.
+
+        Returns:
+            Best matching recording dict, or None if no confident match.
+        """
+        from yubal.lib.matching import match_artists, match_title
+
+        best: dict[str, Any] | None = None
+        best_score = 0.0
+
+        for recording in recordings:
+            rec_title = recording.get("title", "")
+            rec_length = recording.get("length")
+
+            # Title match
+            title_result = match_title(title, rec_title)
+            if not title_result.is_good_match:
+                continue
+
+            # Artist match
+            rec_artists = self._extract_artist_names(recording)
+            if rec_artists:
+                artist_result = match_artists(artists, rec_artists)
+                if not artist_result.is_good_match:
+                    continue
+
+            # Duration validation (if both have it)
+            score = title_result.similarity
+            if duration_seconds and rec_length:
+                try:
+                    rec_duration = int(rec_length) / 1000  # MB stores ms
+                    if rec_duration > 0:
+                        duration_diff = abs(duration_seconds - rec_duration)
+                        duration_ratio = duration_diff / duration_seconds
+                        if duration_ratio > 0.15:  # >15% difference is suspicious
+                            continue
+                        # Slight bonus for close duration match
+                        score = min(
+                            100.0, score + (100.0 - duration_ratio * 100) * 0.1
+                        )
+                except (ValueError, TypeError):
+                    pass
+
+            if score > best_score:
+                best_score = score
+                best = recording
+
+        if best and best_score < self._config.match_threshold:
+            return None
+
+        return best
+
+    def _extract_artist_names(self, recording: dict[str, Any]) -> list[str]:
+        """Extract artist names from a MusicBrainz recording.
+
+        Key parsing note: artist-credit is always a list, not a dict.
+        Access via artist_credit[0]["artist"]["name"].
+
+        Args:
+            recording: Recording dict from MusicBrainz.
+
+        Returns:
+            List of artist names.
+        """
+        artist_credit = recording.get("artist-credit") or []
+        names: list[str] = []
+        for ac in artist_credit:
+            artist = ac.get("artist", {}) if isinstance(ac, dict) else {}
+            name = artist.get("name", "")
+            if name:
+                names.append(name)
+        return names
+
+    def _extract_enrichment_data(
+        self, recording: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Extract enrichment metadata from a MusicBrainz recording.
+
+        Args:
+            recording: Recording dict from MusicBrainz.
+
+        Returns:
+            Dict with MBID, year, track_number, album info, etc.
+        """
+        mbid = recording.get("id", "")
+        rec_length = recording.get("length")
+        duration_ms = int(rec_length) if rec_length else 0
+
+        # Artist names
+        artists = self._extract_artist_names(recording)
+
+        # Release info (first release in the list)
+        release_list = recording.get("release-list") or []
+        release = release_list[0] if release_list else {}
+
+        release_mbid = release.get("id")
+        release_title = release.get("title")
+        release_date = release.get("date")
+        year = release_date[:4] if release_date else None
+
+        # Release group info
+        rg = release.get("release-group") or {}
+        release_group_mbid = rg.get("id")
+
+        return {
+            "mbid": mbid,
+            "release_mbid": release_mbid,
+            "release_group_mbid": release_group_mbid,
+            "year": year,
+            "track_number": None,
+            "total_tracks": None,
+            "mb_title": recording.get("title", ""),
+            "mb_artists": artists,
+            "mb_release_title": release_title,
+            "duration_ms": duration_ms,
+        }

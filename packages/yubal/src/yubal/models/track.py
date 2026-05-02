@@ -50,6 +50,10 @@ class TrackMetadata(BaseModel):
     video_type: VideoType | None = None
     duration_seconds: int | None = None
     match_result: MatchResult = MatchResult.MATCHED
+    # MusicBrainz enrichment fields (populated during Phase 4)
+    mbid: str | None = None
+    release_mbid: str | None = None
+    release_group_mbid: str | None = None
 
     @property
     def video_id(self) -> str:

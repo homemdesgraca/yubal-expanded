@@ -3,15 +3,23 @@
 import logging
 from collections.abc import Iterator
 from dataclasses import dataclass
+from typing import Any
 
-from yubal.client import YTMusicProtocol
+from yubal.client import MusicBrainzProtocol, YTMusicProtocol
 from yubal.exceptions import CancellationError, TrackParseError
 from yubal.lib.matching import find_best_album_match, find_track_by_fuzzy_title
 from yubal.models.cancel import CancelToken
 from yubal.models.enums import ContentKind, MatchResult, SkipReason, VideoType
 from yubal.models.progress import ExtractProgress
 from yubal.models.track import PlaylistInfo, TrackMetadata, UnavailableTrack
-from yubal.models.media import Album, AlbumTrack, Artist, PlaylistTrack, Thumbnail
+from yubal.models.media import (
+    Album,
+    AlbumTrack,
+    Artist,
+    PlaylistTrack,
+    SoundCloudTrack,
+    Thumbnail,
+)
 from yubal.services.cache import ExtractionCache
 from yubal.utils.url import parse_playlist_id, parse_video_id
 
@@ -88,15 +96,24 @@ class MetadataExtractorService:
                    enriched album information
     """
 
-    def __init__(self, client: YTMusicProtocol, *, download_ugc: bool = False) -> None:
+    def __init__(
+        self,
+        client: YTMusicProtocol,
+        *,
+        download_ugc: bool = False,
+        musicbrainz_client: MusicBrainzProtocol | None = None,
+    ) -> None:
         """Initialize the service.
 
         Args:
             client: YouTube Music API client for fetching playlist/album data.
             download_ugc: If True, extract UGC tracks as unofficial instead of skipping.
+            musicbrainz_client: Optional MusicBrainz client for metadata enrichment.
+                                Used to enrich SoundCloud baseline metadata.
         """
         self._client = client
         self._download_ugc = download_ugc
+        self._musicbrainz_client = musicbrainz_client
 
     # ============================================================================
     # PUBLIC API - Main entry points for metadata extraction
@@ -1014,4 +1031,162 @@ class MetadataExtractorService:
             video_type=video_type,
             duration_seconds=track.duration_seconds,
             match_result=match_result,
+        )
+
+    # ============================================================================
+    # MUSICBRAINZ ENRICHMENT - Enrich baseline metadata with MB canonical data
+    # ============================================================================
+
+    def _enrich_track_with_musicbrainz(
+        self, track: SoundCloudTrack
+    ) -> TrackMetadata | None:
+        """Enrich a SoundCloud track with MusicBrainz metadata.
+
+        Takes baseline metadata from SoundCloudClient (yt-dlp) and enriches
+        it with authoritative data from MusicBrainz: year, track number,
+        album name, MBIDs.
+
+        Enrichment strategy:
+        1. If MusicBrainz client is not configured: return baseline as-is
+        2. If track lacks artist/title: skip (can't search effectively)
+        3. Search MusicBrainz with artist + title
+        4. If confident match found: build TrackMetadata from MB data
+        5. If no confident match: return baseline metadata (no enrichment)
+
+        Args:
+            track: SoundCloud track with baseline metadata.
+
+        Returns:
+            Enriched TrackMetadata if MusicBrainz data available, or baseline
+            TrackMetadata if enrichment is skipped/unavailable.
+            Returns None only if the track is fundamentally unprocessable.
+        """
+        # If no MusicBrainz client configured, return baseline
+        if self._musicbrainz_client is None:
+            return self._build_metadata_from_soundcloud_track(track)
+
+        # Skip tracks without essential data
+        if not track.title or not track.artist:
+            logger.debug(
+                "Skipping MusicBrainz enrichment: missing title/artist for '%s'",
+                track.title or "(no title)",
+            )
+            return self._build_metadata_from_soundcloud_track(track)
+
+        logger.debug(
+            "Enriching track '%s' by %s with MusicBrainz",
+            track.title,
+            track.artist,
+        )
+
+        # Search MusicBrainz
+        enrichment = self._musicbrainz_client.enrich_track(
+            title=track.title,
+            artists=[track.artist],
+            duration_seconds=track.duration_seconds or 0,
+        )
+
+        if enrichment is None:
+            logger.debug(
+                "No MusicBrainz match for '%s' by %s, using baseline",
+                track.title,
+                track.artist,
+            )
+            return self._build_metadata_from_soundcloud_track(track)
+
+        logger.debug(
+            "MusicBrainz match: '%s' -> '%s' (year=%s, mbid=%s)",
+            track.title,
+            enrichment["mb_title"],
+            enrichment["year"],
+            enrichment["mbid"],
+        )
+
+        # Build enriched metadata from MusicBrainz data
+        return self._build_enriched_metadata(track, enrichment)
+
+    def _build_metadata_from_soundcloud_track(
+        self, track: SoundCloudTrack
+    ) -> TrackMetadata:
+        """Build TrackMetadata from a SoundCloud track (baseline, no enrichment).
+
+        Used when MusicBrainz enrichment is unavailable or produces no match.
+
+        Args:
+            track: SoundCloud track with baseline metadata.
+
+        Returns:
+            TrackMetadata with SoundCloud-sourced data.
+        """
+        cover_url = track.artwork_url
+        if cover_url:
+            cover_url = _upscale_thumbnail_url(cover_url, 1200)
+
+        # Build artists list — fallback to "Unknown Artist" if missing
+        artists = [track.artist] if track.artist else ["Unknown Artist"]
+
+        return TrackMetadata(
+            source_video_id=track.id,
+            omv_video_id=None,
+            atv_video_id=None,
+            title=track.title,
+            artists=artists,
+            album=track.title,
+            album_artists=artists,
+            track_number=track.track_number,
+            total_tracks=track.total_tracks,
+            year=track.id[:4] if track.id.isdigit() and len(track.id) >= 4 else None,
+            cover_url=cover_url,
+            video_type=None,
+            duration_seconds=track.duration_seconds,
+            match_result=MatchResult.UNMATCHED,
+        )
+
+    def _build_enriched_metadata(
+        self,
+        track: SoundCloudTrack,
+        enrichment: dict[str, Any],
+    ) -> TrackMetadata:
+        """Build TrackMetadata enriched with MusicBrainz data.
+
+        Combines baseline SoundCloud data with authoritative MusicBrainz
+        metadata. MB data takes precedence for: year, track_number,
+        album name (release title), MBIDs.
+
+        Args:
+            track: SoundCloud track with baseline metadata.
+            enrichment: Dict from MusicBrainzClient.enrich_track().
+
+        Returns:
+            TrackMetadata with MusicBrainz-enriched data.
+        """
+        cover_url = track.artwork_url
+        if cover_url:
+            cover_url = _upscale_thumbnail_url(cover_url, 1200)
+
+        # Use MB release title as album name if available
+        album_name = enrichment.get("mb_release_title") or track.title
+
+        # Use MB artists if available
+        mb_artists = enrichment.get("mb_artists", [])
+        artists = mb_artists if mb_artists else ([track.artist] if track.artist else [])
+
+        return TrackMetadata(
+            source_video_id=track.id,
+            omv_video_id=None,
+            atv_video_id=None,
+            title=enrichment.get("mb_title") or track.title,
+            artists=artists,
+            album=album_name,
+            album_artists=artists,
+            track_number=enrichment.get("track_number"),
+            total_tracks=enrichment.get("total_tracks"),
+            year=enrichment.get("year"),
+            cover_url=cover_url,
+            video_type=None,
+            duration_seconds=track.duration_seconds,
+            match_result=MatchResult.MATCHED,
+            mbid=enrichment.get("mbid"),
+            release_mbid=enrichment.get("release_mbid"),
+            release_group_mbid=enrichment.get("release_group_mbid"),
         )
