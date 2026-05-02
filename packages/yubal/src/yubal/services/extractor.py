@@ -1238,7 +1238,7 @@ class MetadataExtractorService:
             album_artists=artists,
             track_number=track.track_number,
             total_tracks=track.total_tracks,
-            year=track.id[:4] if track.id.isdigit() and len(track.id) >= 4 else None,
+            year=track.upload_date[:4] if track.upload_date and len(track.upload_date) >= 4 else None,
             cover_url=cover_url,
             video_type=None,
             duration_seconds=track.duration_seconds,
