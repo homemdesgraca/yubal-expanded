@@ -39,12 +39,11 @@ def _format_artists(artists: list[Artist]) -> str:
 
 
 def _upscale_thumbnail_url(url: str, size: int = 1200) -> str:
-    """Replace size parameters in a Google thumbnail URL to request a larger image.
+    """Replace size parameters in a thumbnail URL to request a larger image.
 
-    YouTube Music thumbnails are hosted on lh3.googleusercontent.com and support
-    URL-based size parameters like ``=w120-h120-l90-rj``. For some albums, the
-    API returns only small thumbnail URLs (e.g. 120x120). By replacing the width
-    and height parameters, we can request the same image at a higher resolution.
+    Handles two common size parameter formats:
+    - Google/YouTube Music: ``=w120-h120-l90-rj``
+    - SoundCloud: ``t500x500`` → ``t1200x1200``
 
     Args:
         url: Thumbnail URL (may or may not contain size parameters).
@@ -53,10 +52,22 @@ def _upscale_thumbnail_url(url: str, size: int = 1200) -> str:
     Returns:
         URL with updated size parameters, or the original URL if no size
         parameters were found.
+
+    Examples:
+        >>> _upscale_thumbnail_url("https://lh3.googleusercontent.com/abc=w120-h120-l90-rj")
+        'https://lh3.googleusercontent.com/abc=w1200-h1200-l90-rj'
+        >>> _upscale_thumbnail_url("https://i1.sndcdn.com/artworks-abc-t500x500.jpg")
+        'https://i1.sndcdn.com/artworks-abc-t1200x1200.jpg'
     """
     import re
 
-    return re.sub(r"=w\d+-h\d+", f"=w{size}-h{size}", url)
+    # Google/YouTube Music format: =w120-h120
+    result = re.sub(r"=w\d+-h\d+", f"=w{size}-h{size}", url)
+    if result != url:
+        return result
+
+    # SoundCloud format: t500x500
+    return re.sub(r"t\d+x\d+", f"t{size}x{size}", url)
 
 
 def _get_square_thumbnail(thumbnails: list[Thumbnail]) -> str | None:

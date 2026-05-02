@@ -131,22 +131,35 @@ class FuzzyTrackMatch:
 
 
 def normalize_title(title: str) -> str:
-    """Normalize a title by stripping common video suffixes.
+    """Normalize a title by stripping common video suffixes and features.
 
     OMV tracks often have suffixes like "(Official Video)" that don't appear
     in the canonical track name. This function strips those for comparison.
+    It also strips "ft X" / "feat X" suffixes, which are often written
+    differently across platforms (e.g., "Song ft Artist" vs "Song").
 
     Args:
         title: Original track title.
 
     Returns:
-        Normalized title with video suffixes removed.
+        Normalized title with video suffixes and feature credits removed.
     """
     normalized = title.lower().strip()
     for suffix in _VIDEO_SUFFIXES:
         if normalized.endswith(suffix):
             normalized = normalized[: -len(suffix)].strip()
             break  # Only strip one suffix
+
+    # Strip feature credits: "ft X", "feat X", "featuring X"
+    # Handles: "ft Artist", "feat Artist", "featuring Artist Name"
+    # Note: "(feat. X)" inside parentheses is handled by extract_base_title.
+    # We only strip unparenthesized forms here.
+    normalized = re.sub(
+        r"\s+\b(?:ft|feat(?:\.)?|featuring)\s+\S+(?:\s+\S+)?\s*$",
+        "",
+        normalized,
+    ).strip()
+
     return normalized
 
 

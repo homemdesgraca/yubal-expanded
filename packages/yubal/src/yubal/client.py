@@ -646,12 +646,62 @@ class SoundCloudClient:
             )
 
         stdout = result.stdout.strip()
-        try:
-            return json.loads(stdout)
-        except json.JSONDecodeError as e:
-            raise SoundCloudParseError(
-                f"yt-dlp output is not valid JSON: {e}"
-            )
+        return self._parse_json_output(stdout)
+
+    def _parse_json_output(self, stdout: str) -> dict[str, Any]:
+        """Parse JSON output from yt-dlp, handling both single-object and NDJSON.
+
+        For single-track URLs, yt-dlp returns a single JSON object.
+        For set URLs, yt-dlp returns NDJSON (newline-delimited JSON),
+        where each line is a separate track entry.
+
+        Args:
+            stdout: Raw stdout from yt-dlp.
+
+        Returns:
+            For single-track: dict with track metadata.
+            For sets: dict with ``_type": "video_list"`` and ``entries`` list.
+
+        Raises:
+            SoundCloudParseError: If output cannot be parsed.
+        """
+        lines = stdout.split("\n")
+        # Filter out empty lines
+        lines = [line.strip() for line in lines if line.strip()]
+
+        if len(lines) == 1:
+            # Single JSON object (track)
+            try:
+                return json.loads(lines[0])
+            except json.JSONDecodeError as e:
+                raise SoundCloudParseError(
+                    f"yt-dlp output is not valid JSON: {e}"
+                )
+
+        # Multiple lines — NDJSON (set)
+        entries: list[dict[str, Any]] = []
+        for i, line in enumerate(lines):
+            try:
+                entries.append(json.loads(line))
+            except json.JSONDecodeError:
+                logger.debug("Skipping non-JSON line #%d", i + 1)
+                continue
+
+        if not entries:
+            raise SoundCloudParseError("No valid JSON entries in yt-dlp output")
+
+        # Build a set-like structure from entries
+        # Use the first entry for set-level metadata
+        first = entries[0]
+        return {
+            "_type": "video_list",
+            "id": first.get("playlist_id") or first.get("id") or "",
+            "title": first.get("playlist_title") or first.get("track")
+            or first.get("title", ""),
+            "uploader": first.get("playlist_uploader") or first.get("uploader"),
+            "track_count": first.get("n_entries") or len(entries),
+            "entries": entries,
+        }
 
     def get_track(self, url: str) -> SoundCloudTrack:
         """Fetch metadata for a single SoundCloud track.
@@ -676,8 +726,9 @@ class SoundCloudClient:
         """Fetch metadata for a SoundCloud set (playlist).
 
         Runs ``yt-dlp --dump-json --no-download <url>`` and parses the
-        JSON output. For sets, yt-dlp returns a ``_type": "video_list"``
-        entry with ``entries`` containing all tracks in the set.
+        JSON output. For sets, yt-dlp returns NDJSON (one JSON object per
+        line), which is parsed into a ``video_list`` structure with all
+        entries.
 
         Args:
             url: SoundCloud set URL.
@@ -986,7 +1037,7 @@ class MusicBrainzClient:
             result = musicbrainzngs.search_recordings(
                 query=query,
                 artist=artists[0],
-                recname=title,
+                recording=title,
                 limit=self._config.search_limit,
             )
         except Exception as e:
