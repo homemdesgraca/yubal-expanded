@@ -5,9 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from yubal import ContentKind, parse_playlist_id
-from yubal.client import YTMusicClient
+from yubal.client import SoundCloudClient, YTMusicClient
 from yubal.models.media import Playlist
-from yubal.utils.url import parse_video_id
+from yubal.utils.url import is_soundcloud_url, parse_video_id
 
 from yubal_api.domain.job import ContentInfo
 
@@ -35,13 +35,19 @@ class _Classification:
 class PlaylistInfoService:
     """Service to fetch playlist metadata from YouTube Music."""
 
-    def __init__(self, cookies_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        cookies_path: Path | None = None,
+        soundcloud_client: SoundCloudClient | None = None,
+    ) -> None:
         """Initialize the service.
 
         Args:
             cookies_path: Optional path to cookies.txt for authenticated requests.
+            soundcloud_client: Optional SoundCloud client for SoundCloud URLs.
         """
         self._client = YTMusicClient(cookies_path=cookies_path)
+        self._soundcloud_client = soundcloud_client or SoundCloudClient()
 
     def get_playlist_metadata(self, url: str) -> PlaylistMetadata:
         """Get the metadata of a playlist from its URL.
@@ -66,14 +72,14 @@ class PlaylistInfoService:
         return PlaylistMetadata(title=title, thumbnail_url=thumbnail_url)
 
     def get_content_info(self, url: str) -> ContentInfo:
-        """Get content info for any supported YouTube URL.
+        """Get content info for any supported URL (YouTube Music or SoundCloud).
 
         Returns quick metadata (title, artist, kind, track count, year,
         thumbnail) from a single API call without running the full
         extraction pipeline.
 
         Args:
-            url: YouTube Music URL (playlist, album, or single track).
+            url: YouTube Music or SoundCloud URL.
 
         Returns:
             ContentInfo with metadata from the URL.
@@ -87,6 +93,10 @@ class PlaylistInfoService:
             UnsupportedPlaylistError: If playlist type is not supported (422).
             UpstreamAPIError: If API request fails (502).
         """
+        # Route SoundCloud URLs to SoundCloudClient
+        if is_soundcloud_url(url):
+            return self._get_soundcloud_content_info(url)
+
         video_id = parse_video_id(url)
         if video_id:
             return self._get_track_content_info(video_id, url)

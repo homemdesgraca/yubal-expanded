@@ -5,14 +5,14 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from yubal_api.db.subscription import SubscriptionType
-from yubal_api.schemas.jobs import YouTubeMusicUrl
+from yubal_api.schemas.jobs import SupportedUrl
 from yubal_api.schemas.types import UTCDateTime
 
 
 class SubscriptionCreate(BaseModel):
     """Request to create a subscription."""
 
-    url: YouTubeMusicUrl
+    url: SupportedUrl
     max_items: int | None = Field(default=None, ge=1, le=10000)
 
 
