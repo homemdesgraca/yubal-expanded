@@ -130,6 +130,7 @@ class SoundCloudTrack(YTMusicModel):
         permalink_url: Permanent URL to the track on SoundCloud.
         track_number: Track position within a set (None for standalone tracks).
         total_tracks: Total tracks in the set (None for standalone tracks).
+        upload_date: Upload date from yt-dlp (YYYYMMDD format, may be None).
     """
 
     model_config = ConfigDict(extra="ignore", frozen=True)
@@ -142,6 +143,7 @@ class SoundCloudTrack(YTMusicModel):
     permalink_url: str | None = None
     track_number: int | None = None
     total_tracks: int | None = None
+    upload_date: str | None = None  # YYYYMMDD format from yt-dlp
 
     @property
     def has_valid_metadata(self) -> bool:

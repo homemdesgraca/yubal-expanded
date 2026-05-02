@@ -830,9 +830,13 @@ class SoundCloudClient:
         artwork_url = None
         thumbnails = data.get("thumbnails") or data.get("thumbnail")
         if isinstance(thumbnails, list) and thumbnails:
-            # Pick the largest thumbnail
-            largest = max(thumbnails, key=lambda t: (t.get("width") or 0) * (t.get("height") or 0))
-            artwork_url = largest.get("url")
+            # Prefer 'original' for best quality, fall back to largest available
+            original = next((t for t in thumbnails if t.get("id") == "original"), None)
+            if original:
+                artwork_url = original.get("url")
+            else:
+                largest = max(thumbnails, key=lambda t: (t.get("width") or 0) * (t.get("height") or 0))
+                artwork_url = largest.get("url")
         elif isinstance(thumbnails, str):
             artwork_url = thumbnails
         elif isinstance(thumbnails, dict):
@@ -858,6 +862,7 @@ class SoundCloudClient:
             duration_seconds=duration_seconds,
             artwork_url=artwork_url,
             permalink_url=permalink_url,
+            upload_date=data.get("upload_date"),
         )
 
     def _parse_track_with_position(
@@ -916,8 +921,13 @@ class SoundCloudClient:
         set_artwork = None
         thumbnails = data.get("thumbnails") or data.get("thumbnail")
         if isinstance(thumbnails, list) and thumbnails:
-            largest = max(thumbnails, key=lambda t: (t.get("width") or 0) * (t.get("height") or 0))
-            set_artwork = largest.get("url")
+            # Prefer 'original' for best quality, fall back to largest available
+            original = next((t for t in thumbnails if t.get("id") == "original"), None)
+            if original:
+                set_artwork = original.get("url")
+            else:
+                largest = max(thumbnails, key=lambda t: (t.get("width") or 0) * (t.get("height") or 0))
+                set_artwork = largest.get("url")
         elif isinstance(thumbnails, str):
             set_artwork = thumbnails
 
