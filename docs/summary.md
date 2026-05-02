@@ -6,12 +6,56 @@ This document describes how yubal implements its core features. Yubal is a self-
 
 ## Table of Contents
 
+- [0. Supported Sources](#0-supported-sources)
 - [1. URL Parsing & Content Classification](#1-url-parsing--content-classification)
 - [2. Metadata Extraction (YouTube Music API)](#2-metadata-extraction-youtube-music-api)
+- [2b. MusicBrainz Enrichment](#2b-musicbrainz-enrichment)
 - [3. Album Discovery & Track Matching](#3-album-discovery--track-matching)
 - [4. Audio Download (yt-dlp)](#4-audio-download-yt-dlp)
 - [5. Metadata Tagging & Cover Art Embedding](#5-metadata-tagging--cover-art-embedding)
 - [6. Automatic Lyrics Fetching](#6-automatic-lyrics-fetching)
+## 0. Supported Sources
+
+Yubal supports two music sources:
+
+| Source | Protocol | Metadata Source | Notes |
+|--------|----------|-----------------|-------|
+| **YouTube Music** | `ytmusicapi` | YouTube Music API | Full metadata, album classification, UGC support |
+| **SoundCloud** | `yt-dlp --dump-json` | yt-dlp JSON parsing | No public API; uses yt-dlp for metadata extraction |
+
+**YouTube Music:** Full feature set including album classification, track-to-album matching, and UGC downloads.
+
+**SoundCloud:** Tracks and sets (playlists). No album classification (all content is `TRACK` or `PLAYLIST`). MusicBrainz enrichment available for canonical metadata.
+
+---
+
+## 2b. MusicBrainz Enrichment
+
+**Feature:** Enriches baseline metadata from SoundCloud (yt-dlp) with canonical data from MusicBrainz.
+
+**How it works:**
+
+- `MusicBrainzClient` (`packages/yubal/src/yubal/client.py`) uses the `musicbrainzngs` library with `set_useragent("yubal", "0.8.0")` and `set_rate_limit(1.0)`.
+- **Search:** `search_recordings(artist=..., recording=...)` finds the best matching recording.
+- **Matching:** Uses the same `rapidfuzz` fuzzy matching logic as YouTube Music matching (70% threshold for title and artist).
+- **Duration validation:** Rejects matches with >15% duration difference from the baseline.
+- **Title normalization:** `normalize_title()` strips video suffixes (e.g., "(Official Video)") and feature credits (e.g., "ft Artist", "feat. Artist", "featuring Artist Name").
+- **Enrichment:** If a confident MB match is found, replaces the SoundCloud baseline with MB data: year, release title (as album name), MBIDs.
+- **Fallback:** If no MB match, uses the yt-dlp baseline metadata unchanged.
+- **Protocol:** Implements `MusicBrainzProtocol` for dependency injection.
+- **Configuration:** `MusicBrainzConfig` controls `enabled`, `search_limit` (default: 5), and `match_threshold` (default: 70%).
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `packages/yubal/src/yubal/client.py` | MusicBrainz client |
+| `packages/yubal/src/yubal/config.py` | MusicBrainzConfig dataclass |
+| `packages/yubal/src/yubal/lib/matching.py` | Fuzzy title/artist matching |
+| `packages/yubal/src/yubal/services/extractor.py` | Enrichment pipeline |
+
+---
+
 - [7. ReplayGain Loudness Normalization](#7-replaygain-loudness-normalization)
 - [8. M3U Playlist & Cover Art Generation](#8-m3u-playlist--cover-art-generation)
 - [9. Smart Deduplication](#9-smart-deduplication)
@@ -66,12 +110,14 @@ This document describes how yubal implements its core features. Yubal is a self-
 - **Playlist fetching:** `get_playlist()` fetches all tracks (with `limit=None`), categorizes them as available or unavailable, and returns a parsed `Playlist` model.
 - **Track fetching:** `get_track()` uses `get_watch_playlist()` to fetch a single track by video ID.
 
+**SoundCloud alternative:** For SoundCloud URLs, `SoundCloudClient` uses `yt-dlp --dump-json --no-download <url>` to extract metadata. It handles both single tracks and sets (playlists), with NDJSON parsing for set entries. Implements `SoundCloudProtocol` for dependency injection.
+
 **Key files:**
 
 | File | Role |
 |------|------|
-| `packages/yubal/src/yubal/client.py` | YouTube Music API client |
-| `packages/yubal/src/yubal/models/media.py` | Domain models (Album, Playlist, Track, etc.) |
+| `packages/yubal/src/yubal/client.py` | YouTube Music + SoundCloud clients |
+| `packages/yubal/src/yubal/models/media.py` | Domain models (Album, Playlist, Track, SoundCloudTrack, SoundCloudSet, etc.) |
 | `packages/yubal/src/yubal/exceptions.py` | Domain-specific exceptions |
 
 ---
@@ -84,7 +130,7 @@ This document describes how yubal implements its core features. Yubal is a self-
 
 - **Search:** `MetadataExtractorService._search_for_album()` queries YouTube Music with `"artist + title"` and uses the `matching` module to find the best album match.
 - **Title matching** (`packages/yubal/src/yubal/lib/matching.py`):
-  - Strips common video suffixes (e.g., "(Official Video)", "(Official Audio)")
+  - Strips common video suffixes (e.g., "(Official Video)", "(Official Audio)") and feature credits (e.g., "ft Artist", "feat. Artist", "featuring Artist Name")
   - Computes both full-title similarity and base-title similarity (stripping all parenthetical content)
   - Uses `rapidfuzz.fuzz.ratio` for string similarity scoring (threshold: 70%)
 - **Artist matching:** Computes the best pairwise similarity between target and candidate artist sets (threshold: 70%).
@@ -105,11 +151,13 @@ This document describes how yubal implements its core features. Yubal is a self-
 
 ## 4. Audio Download (yt-dlp)
 
-**Feature:** Downloads audio from YouTube Music using yt-dlp with support for multiple codecs (opus, mp3, m4a), automatic retry on transient errors, and graceful cancellation.
+**Feature:** Downloads audio from YouTube Music or SoundCloud using yt-dlp with support for multiple codecs (opus, mp3, m4a), automatic retry on transient errors, and graceful cancellation.
 
 **How it works:**
 
 - `YTDLPDownloader` (`packages/yubal/src/yubal/services/download_service.py`) wraps yt-dlp with consistent configuration:
+  - **Video ID selection:** Prefers ATV video ID, falls back to OMV, then to `source_video_id` (which may be a SoundCloud permalink URL)
+  - **URL handling:** If `source_video_id` is already a full URL (e.g., SoundCloud permalink), passes it directly to yt-dlp instead of wrapping in a YouTube Music URL
   - **Format selection:** Prefers best audio in the target codec, falls back to best available
   - **FFmpeg post-processing:** Converts to target codec with configurable quality
   - **Exponential backoff:** Retries transient errors (403, 429, 5xx) up to 3 times with delays of 1s, 2s, 4s (capped at 30s)
@@ -523,12 +571,19 @@ This document describes how yubal implements its core features. Yubal is a self-
 │       │           │           │          │         │           │
 │  ┌────▼───┐  ┌────▼────┐ ┌───▼───┐ ┌────▼──┐ ┌────▼─────┐    │
 │  │Extractor│  │Downloader│ │Artifacts│ │Replay│ │ LyricsSvc │   │
-│  │(ytmusic)│  │(yt-dlp) │ │(M3U+cover)│ │Gain│ │(lrclib)  │   │
+│  │(YTMusic │  │(yt-dlp) │ │(M3U+cover)│ │Gain│ │(lrclib)  │   │
+│  │+SoundC │  │         │ │       │ │     │ │       │   │
+│  │+MBEnrich│  │         │ │       │ │     │ │       │   │
 │  └─────────┘  └─────────┘ └─────────┘ └──────┘ └──────────┘    │
 │                                                                  │
 │  ┌──────────────┐ ┌────────────┐ ┌──────────┐ ┌──────────────┐ │
 │  │ Matching     │ │ Cache      │ │ Cover    │ │ Filename     │ │
 │  │(rapidfuzz)   │ │(SQLite)    │ │Cache     │ │(pathvalidate)│ │
 │  └──────────────┘ └────────────┘ └──────────┘ └──────────────┘ │
+│                                                                  │
+│  ┌──────────────┐ ┌──────────────┐                               │
+│  │ YTMusicCli   │ │ SoundCloudCl │                               │
+│  │ +MBClient    │ │ +MBClient    │                               │
+│  └──────────────┘ └──────────────┘                               │
 └──────────────────────────────────────────────────────────────────┘
 ```

@@ -3,13 +3,13 @@
 import logging
 
 import pytest
-from conftest import MockYTMusicClient
+from conftest import MockMusicBrainzClient, MockSoundCloudClient, MockYTMusicClient
 from pydantic import ValidationError
-from yubal.exceptions import CancellationError
+from yubal.exceptions import CancellationError, PlaylistParseError
 from yubal.models.cancel import CancelToken
 from yubal.models.enums import MatchResult, SkipReason, VideoType
 from yubal.models.track import TrackMetadata
-from yubal.models.media import Album, Artist, Playlist, SearchResult, Thumbnail
+from yubal.models.media import Album, Artist, Playlist, SearchResult, SoundCloudSet, SoundCloudTrack, Thumbnail
 from yubal.services import MetadataExtractorService
 from yubal.services.extractor import (
     _format_artists,
@@ -1803,3 +1803,117 @@ class TestUGCDownload:
         assert tracks[0].video_type == VideoType.ATV
         assert tracks[1].match_result == MatchResult.UNOFFICIAL
         assert tracks[1].video_type == VideoType.UGC
+
+
+class TestSoundCloudExtraction:
+    """Test SoundCloud URL extraction via MetadataExtractorService."""
+
+    def test_extract_soundcloud_track(self) -> None:
+        """Should extract a single SoundCloud track."""
+        sc_track = SoundCloudTrack(
+            id="12345",
+            title="Psychoboost",
+            artist="Jane Remover",
+            duration_seconds=198,
+            artwork_url="https://i1.sndcdn.com/art-abc-t500x500.jpg",
+            permalink_url="https://soundcloud.com/janeremover/psychoboost",
+        )
+        mock_sc = MockSoundCloudClient(track=sc_track)
+        mock_yt = MockYTMusicClient()
+
+        service = MetadataExtractorService(
+            mock_yt, soundcloud_client=mock_sc
+        )
+
+        tracks = extract_all(service, "https://soundcloud.com/janeremover/psychoboost")
+
+        assert len(tracks) == 1
+        assert tracks[0].title == "Psychoboost"
+        assert tracks[0].artist == "Jane Remover"
+        assert tracks[0].mbid is None  # No MB client
+
+    def test_extract_soundcloud_set(self) -> None:
+        """Should extract all tracks from a SoundCloud set."""
+        tracks_data = [
+            SoundCloudTrack(
+                id="1",
+                title="TWICE REMOVED",
+                artist="Jane Remover",
+                duration_seconds=180,
+                artwork_url="https://i1.sndcdn.com/art-1-t500x500.jpg",
+            ),
+            SoundCloudTrack(
+                id="2",
+                title="Psychoboost",
+                artist="Jane Remover",
+                duration_seconds=198,
+                artwork_url="https://i1.sndcdn.com/art-2-t500x500.jpg",
+            ),
+        ]
+        sc_set = SoundCloudSet(
+            id="set123",
+            title="Revengeseekerz",
+            uploader="Jane Remover",
+            tracks=tracks_data,
+            artwork_url="https://i1.sndcdn.com/art-set-t500x500.jpg",
+            permalink_url="https://soundcloud.com/janeremover/sets/revengeseekerz",
+        )
+        mock_sc = MockSoundCloudClient(set_result=sc_set)
+        mock_yt = MockYTMusicClient()
+
+        service = MetadataExtractorService(
+            mock_yt, soundcloud_client=mock_sc
+        )
+
+        tracks = extract_all(service, "https://soundcloud.com/janeremover/sets/revengeseekerz")
+
+        assert len(tracks) == 2
+        assert tracks[0].title == "TWICE REMOVED"
+        assert tracks[1].title == "Psychoboost"
+
+    def test_soundcloud_track_with_musicbrainz_enrichment(self) -> None:
+        """Should enrich SoundCloud track with MusicBrainz data."""
+        sc_track = SoundCloudTrack(
+            id="12345",
+            title="Psychoboost",
+            artist="Jane Remover",
+            duration_seconds=198,
+            artwork_url="https://i1.sndcdn.com/art-abc-t500x500.jpg",
+        )
+        mock_sc = MockSoundCloudClient(track=sc_track)
+        mock_yt = MockYTMusicClient()
+
+        # Create a mock MB client that returns a match
+        mock_mb = MockMusicBrainzClient(
+            enrichment={
+                "mbid": "0ba469ff-a111-4cfa-9db0-fb23667d9c42",
+                "release_mbid": "release-123",
+                "mb_title": "Psychoboost",
+                "mb_artists": ["Jane Remover"],
+                "year": "2025",
+                "mb_release_title": "Revengeseekerz",
+            }
+        )
+
+        service = MetadataExtractorService(
+            mock_yt,
+            musicbrainz_client=mock_mb,
+            soundcloud_client=mock_sc,
+        )
+
+        tracks = extract_all(service, "https://soundcloud.com/janeremover/psychoboost")
+
+        assert len(tracks) == 1
+        assert tracks[0].mbid == "0ba469ff-a111-4cfa-9db0-fb23667d9c42"
+        assert tracks[0].release_mbid == "release-123"
+        assert tracks[0].match_result == MatchResult.MATCHED
+
+    def test_soundcloud_url_without_client_ignored(self) -> None:
+        """Should raise error for SoundCloud URL when no client provided."""
+        mock_yt = MockYTMusicClient()
+        service = MetadataExtractorService(mock_yt)
+
+        with pytest.raises(PlaylistParseError):
+            extract_all(service, "https://soundcloud.com/janeremover/psychoboost")
+
+

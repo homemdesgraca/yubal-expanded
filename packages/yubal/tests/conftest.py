@@ -7,6 +7,7 @@ This module provides shared fixtures for the yubal test suite, organized into:
 """
 
 from collections.abc import Callable
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -18,6 +19,8 @@ from yubal.models.media import (
     Playlist,
     PlaylistTrack,
     SearchResult,
+    SoundCloudSet,
+    SoundCloudTrack,
     Thumbnail,
 )
 
@@ -289,6 +292,69 @@ class MockYTMusicClient:
     def get_track(self, video_id: str) -> PlaylistTrack:
         """Mock get_track - not implemented for playlist tests."""
         raise NotImplementedError("MockYTMusicClient doesn't support get_track")
+
+
+class MockSoundCloudClient:
+    """Mock SoundCloud client for testing."""
+
+    def __init__(
+        self,
+        track: SoundCloudTrack | None = None,
+        set_result: SoundCloudSet | None = None,
+    ) -> None:
+        self._track = track
+        self._set_result = set_result
+        self.extract_calls: list[str] = []
+
+    def get_track(self, url: str) -> SoundCloudTrack:
+        """Mock get_track."""
+        self.extract_calls.append(url)
+        if self._track is None:
+            raise ValueError("No track configured")
+        return self._track
+
+    def get_set(self, url: str) -> SoundCloudSet:
+        """Mock get_set."""
+        self.extract_calls.append(url)
+        if self._set_result is None:
+            raise ValueError("No set configured")
+        return self._set_result
+
+    def extract(self, url: str) -> SoundCloudTrack | SoundCloudSet:
+        """Mock extract."""
+        self.extract_calls.append(url)
+        if "/sets/" in url:
+            return self.get_set(url)
+        return self.get_track(url)
+
+
+class MockMusicBrainzClient:
+    """Mock MusicBrainz client for testing."""
+
+    def __init__(
+        self,
+        enrichment: dict[str, Any] | None = None,
+    ) -> None:
+        self._enrichment = enrichment or {}
+        self.search_calls: list[dict] = []
+
+    def search(self, artist: str, recording: str) -> dict[str, Any] | None:
+        """Mock search."""
+        self.search_calls.append({"artist": artist, "recording": recording})
+        return self._enrichment if self._enrichment else None
+
+    def get_recording(self, mbid: str) -> dict[str, Any] | None:
+        """Mock get_recording."""
+        return self._enrichment if self._enrichment else None
+
+    def enrich_track(
+        self,
+        title: str,
+        artists: list[str],
+        duration_seconds: int,
+    ) -> dict[str, Any] | None:
+        """Mock enrich_track."""
+        return self._enrichment if self._enrichment else None
 
 
 @pytest.fixture
