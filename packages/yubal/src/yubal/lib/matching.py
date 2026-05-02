@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 from rapidfuzz import fuzz, process
 
-from yubal.models.ytmusic import AlbumTrack, Artist, SearchResult
+from yubal.models.media import AlbumTrack, Artist, SearchResult
 
 logger = logging.getLogger(__name__)
 

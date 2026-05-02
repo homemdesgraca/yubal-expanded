@@ -16,6 +16,8 @@ __all__ = [
     "Playlist",
     "PlaylistTrack",
     "SearchResult",
+    "SoundCloudSet",
+    "SoundCloudTrack",
     "Thumbnail",
 ]
 
@@ -106,3 +108,66 @@ class SearchResult(YTMusicModel):
     title: str
     artists: list[Artist] = Field(default_factory=list)
     album: AlbumRef | None = None
+
+
+# ============================================================================
+# SOUND CLOUD MODELS
+# ============================================================================
+
+
+class SoundCloudTrack(YTMusicModel):
+    """Metadata for a single SoundCloud track.
+
+    Parsed from yt-dlp --dump-json output for SoundCloud URLs.
+    Contains the minimal fields needed for yubal's extraction pipeline.
+
+    Attributes:
+        id: SoundCloud track ID (numeric string).
+        title: Track title.
+        artist: Artist name (may be empty for tracks without artist).
+        duration_seconds: Track duration in seconds (0 if unavailable).
+        artwork_url: URL to the track's artwork image (may be None).
+        permalink_url: Permanent URL to the track on SoundCloud.
+        track_number: Track position within a set (None for standalone tracks).
+        total_tracks: Total tracks in the set (None for standalone tracks).
+    """
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    id: str
+    title: str
+    artist: str = ""
+    duration_seconds: int = 0
+    artwork_url: str | None = None
+    permalink_url: str | None = None
+    track_number: int | None = None
+    total_tracks: int | None = None
+
+    @property
+    def has_valid_metadata(self) -> bool:
+        """Check if the track has the minimum required metadata."""
+        return bool(self.title and self.artist and self.duration_seconds > 0)
+
+
+class SoundCloudSet(YTMusicModel):
+    """A SoundCloud set (playlist) containing multiple tracks.
+
+    Parsed from yt-dlp --dump-json output for SoundCloud set URLs.
+
+    Attributes:
+        id: SoundCloud set ID.
+        title: Set title/name.
+        artist: Set creator/artist name.
+        tracks: List of tracks in the set.
+        artwork_url: URL to the set's cover image (may be None).
+        permalink_url: Permanent URL to the set on SoundCloud.
+    """
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    id: str
+    title: str
+    artist: str = ""
+    tracks: list[SoundCloudTrack]
+    artwork_url: str | None = None
+    permalink_url: str | None = None

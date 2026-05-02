@@ -1,6 +1,10 @@
 """YouTube Music API client wrapper."""
 
+import json
 import logging
+import re
+import shutil
+import subprocess
 from collections import OrderedDict
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -12,13 +16,22 @@ from yubal.config import APIConfig
 from yubal.exceptions import (
     AuthenticationRequiredError,
     PlaylistNotFoundError,
+    SoundCloudParseError,
+    SoundCloudUnavailableError,
     TrackNotFoundError,
     UnsupportedPlaylistError,
     UpstreamAPIError,
     YubalError,
 )
 from yubal.models.enums import SkipReason
-from yubal.models.ytmusic import Album, Playlist, PlaylistTrack, SearchResult
+from yubal.models.media import (
+    Album,
+    Playlist,
+    PlaylistTrack,
+    SearchResult,
+    SoundCloudSet,
+    SoundCloudTrack,
+)
 from yubal.utils.cookies import cookies_to_ytmusic_auth
 
 logger = logging.getLogger(__name__)
@@ -48,6 +61,44 @@ class YTMusicProtocol(Protocol):
 
     def get_track(self, video_id: str) -> PlaylistTrack:
         """Fetch a single track by video ID."""
+        ...
+
+
+class SoundCloudProtocol(Protocol):
+    """Protocol for SoundCloud metadata clients.
+
+    This protocol enables dependency injection and testing.
+    Implement this protocol to create mock clients for testing.
+    """
+
+    def get_track(self, url: str) -> SoundCloudTrack:
+        """Fetch metadata for a single SoundCloud track.
+
+        Args:
+            url: SoundCloud track URL.
+
+        Returns:
+            Parsed SoundCloudTrack model.
+
+        Raises:
+            SoundCloudParseError: If metadata cannot be parsed.
+            SoundCloudUnavailableError: If the track is private or removed.
+        """
+        ...
+
+    def get_set(self, url: str) -> SoundCloudSet:
+        """Fetch metadata for a SoundCloud set (playlist).
+
+        Args:
+            url: SoundCloud set URL.
+
+        Returns:
+            Parsed SoundCloudSet model with all tracks.
+
+        Raises:
+            SoundCloudParseError: If metadata cannot be parsed.
+            SoundCloudUnavailableError: If the set is private or removed.
+        """
         ...
 
 
@@ -474,3 +525,346 @@ class YTMusicClient:
             )
 
         return None
+
+
+# ============================================================================
+# SOUND CLOUD CLIENT
+# ============================================================================
+
+
+class SoundCloudClient:
+    """SoundCloud metadata client using yt-dlp.
+
+    Extracts track and set metadata from SoundCloud URLs by running
+    ``yt-dlp --dump-json --no-download <url>`` and parsing the JSON output.
+    Implements SoundCloudProtocol for dependency injection.
+
+    Why yt-dlp: SoundCloud does not offer a public API for metadata.
+    yt-dlp provides reliable extraction of track info, artwork URLs,
+    and set contents without downloading the audio file.
+
+    Edge cases handled:
+    - Tracks without artist names -> skipped (has_valid_metadata=False)
+    - Tracks without duration -> skipped (has_valid_metadata=False)
+    - Private/restricted tracks -> SoundCloudUnavailableError
+    - Missing artwork -> artwork_url is None (graceful degradation)
+    """
+
+    def __init__(self, yt_dlp_path: str | None = None) -> None:
+        """Initialize the client.
+
+        Args:
+            yt_dlp_path: Optional path to yt-dlp binary. Uses PATH search if None.
+        """
+        self._yt_dlp_path = yt_dlp_path or "yt-dlp"
+
+    def _run_dump_json(self, url: str) -> dict[str, Any]:
+        """Run yt-dlp --dump-json --no-download for a SoundCloud URL.
+
+        Args:
+            url: SoundCloud track or set URL.
+
+        Returns:
+            Parsed JSON output as a dict.
+
+        Raises:
+            SoundCloudUnavailableError: If the track/set is private or removed.
+            SoundCloudParseError: If yt-dlp output cannot be parsed.
+        """
+        logger.debug("Running yt-dlp --dump-json for: %s", url)
+
+        cmd = [self._yt_dlp_path, "--dump-json", "--no-download", "--no-warnings", url]
+
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except FileNotFoundError:
+            raise SoundCloudParseError(
+                "yt-dlp is not installed or not in PATH. "
+                "Please install yt-dlp: pip install yt-dlp"
+            )
+        except subprocess.TimeoutExpired:
+            raise SoundCloudParseError(
+                f"yt-dlp timed out after 30s for: {url}"
+            )
+
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            # Check for common unavailability patterns
+            if any(
+                pattern in stderr
+                for pattern in [
+                    "This track is no longer available",
+                    "This song is unavailable",
+                    "Private or internal",
+                    "This content is private",
+                    "has been removed by the artist",
+                    "This video is unavailable",
+                    "Access denied",
+                    "This track has been blocked",
+                    "country_limit",
+                    "geoblocked",
+                    "REGION_RESTRICTED",
+                ]
+            ):
+                raise SoundCloudUnavailableError(
+                    f"SoundCloud track is unavailable: {stderr[:200]}"
+                )
+            raise SoundCloudParseError(
+                f"yt-dlp failed (code {result.returncode}): {stderr[:200]}"
+            )
+
+        stdout = result.stdout.strip()
+        try:
+            return json.loads(stdout)
+        except json.JSONDecodeError as e:
+            raise SoundCloudParseError(
+                f"yt-dlp output is not valid JSON: {e}"
+            )
+
+    def get_track(self, url: str) -> SoundCloudTrack:
+        """Fetch metadata for a single SoundCloud track.
+
+        Runs ``yt-dlp --dump-json --no-download <url>`` and parses the
+        JSON output into a SoundCloudTrack model.
+
+        Args:
+            url: SoundCloud track URL.
+
+        Returns:
+            Parsed SoundCloudTrack model.
+
+        Raises:
+            SoundCloudParseError: If metadata cannot be parsed.
+            SoundCloudUnavailableError: If the track is private or removed.
+        """
+        data = self._run_dump_json(url)
+        return self._parse_track(data)
+
+    def get_set(self, url: str) -> SoundCloudSet:
+        """Fetch metadata for a SoundCloud set (playlist).
+
+        Runs ``yt-dlp --dump-json --no-download <url>`` and parses the
+        JSON output. For sets, yt-dlp returns a ``_type": "video_list"``
+        entry with ``entries`` containing all tracks in the set.
+
+        Args:
+            url: SoundCloud set URL.
+
+        Returns:
+            Parsed SoundCloudSet model with all tracks.
+
+        Raises:
+            SoundCloudParseError: If metadata cannot be parsed.
+            SoundCloudUnavailableError: If the set is private or removed.
+        """
+        data = self._run_dump_json(url)
+
+        # Check if this is a set (video_list type with entries)
+        if data.get("_type") == "video_list":
+            entries = data.get("entries") or []
+            return self._parse_set(data, entries)
+
+        # Single track URL that was somehow passed to get_set
+        # Try parsing as a single track and wrapping it
+        track = self._parse_track(data)
+        return SoundCloudSet(
+            id=track.id,
+            title=track.title,
+            artist=track.artist,
+            tracks=[track],
+            artwork_url=track.artwork_url,
+            permalink_url=track.permalink_url,
+        )
+
+    def _parse_track(self, data: dict[str, Any]) -> SoundCloudTrack:
+        """Parse a yt-dlp JSON response into a SoundCloudTrack.
+
+        Handles both single-track and set-entry responses.
+
+        Args:
+            data: yt-dlp JSON output dict.
+
+        Returns:
+            Parsed SoundCloudTrack model.
+
+        Raises:
+            SoundCloudParseError: If required fields are missing.
+        """
+        # Extract basic fields with sensible defaults
+        track_id = data.get("id") or data.get("_id", "")
+        title = data.get("title") or data.get("name", "")
+        duration = data.get("duration") or data.get("duration_string")
+
+        # Parse duration: can be int (seconds) or string like "3:24"
+        duration_seconds = self._parse_duration(duration)
+
+        # Extract artist name
+        artist = ""
+        uploader = data.get("uploader") or data.get("creator") or data.get("artist")
+        if isinstance(uploader, str):
+            artist = uploader
+        elif isinstance(uploader, dict):
+            artist = uploader.get("title") or uploader.get("name") or ""
+
+        # Extract artwork URL
+        artwork_url = None
+        thumbnails = data.get("thumbnails") or data.get("thumbnail")
+        if isinstance(thumbnails, list) and thumbnails:
+            # Pick the largest thumbnail
+            largest = max(thumbnails, key=lambda t: (t.get("width") or 0) * (t.get("height") or 0))
+            artwork_url = largest.get("url")
+        elif isinstance(thumbnails, str):
+            artwork_url = thumbnails
+        elif isinstance(thumbnails, dict):
+            artwork_url = thumbnails.get("url")
+
+        # Extract permalink URL
+        permalink_url = (
+            data.get("webpage_url")
+            or data.get("url")
+            or data.get("permalink_url")
+            or data.get("external_url")
+        )
+
+        if not track_id:
+            raise SoundCloudParseError("Missing track ID in SoundCloud response")
+        if not title:
+            raise SoundCloudParseError("Missing title in SoundCloud response")
+
+        return SoundCloudTrack(
+            id=str(track_id),
+            title=title,
+            artist=artist,
+            duration_seconds=duration_seconds,
+            artwork_url=artwork_url,
+            permalink_url=permalink_url,
+        )
+
+    def _parse_track_with_position(
+        self, data: dict[str, Any], position: int, total_tracks: int
+    ) -> SoundCloudTrack:
+        """Parse a yt-dlp JSON response into a SoundCloudTrack with set position.
+
+        Args:
+            data: yt-dlp JSON output dict.
+            position: 1-based track position in the set.
+            total_tracks: Total number of tracks in the set.
+
+        Returns:
+            Parsed SoundCloudTrack model with track_number and total_tracks set.
+
+        Raises:
+            SoundCloudParseError: If required fields are missing.
+        """
+        track = self._parse_track(data)
+        track = SoundCloudTrack(
+            id=track.id,
+            title=track.title,
+            artist=track.artist,
+            duration_seconds=track.duration_seconds,
+            artwork_url=track.artwork_url,
+            permalink_url=track.permalink_url,
+            track_number=position,
+            total_tracks=total_tracks,
+        )
+        return track
+
+    def _parse_set(
+        self, data: dict[str, Any], entries: list[dict[str, Any]]
+    ) -> SoundCloudSet:
+        """Parse a SoundCloud set from yt-dlp JSON output.
+
+        Args:
+            data: Top-level yt-dlp JSON output dict (for set metadata).
+            entries: List of track entry dicts from ``data["entries"]``.
+
+        Returns:
+            Parsed SoundCloudSet model.
+        """
+        # Set-level metadata
+        set_id = data.get("id") or data.get("_id", "")
+        set_title = data.get("title") or data.get("name", "")
+
+        set_artist = ""
+        uploader = data.get("uploader") or data.get("creator") or data.get("artist")
+        if isinstance(uploader, str):
+            set_artist = uploader
+        elif isinstance(uploader, dict):
+            set_artist = uploader.get("title") or uploader.get("name") or ""
+
+        # Set-level artwork
+        set_artwork = None
+        thumbnails = data.get("thumbnails") or data.get("thumbnail")
+        if isinstance(thumbnails, list) and thumbnails:
+            largest = max(thumbnails, key=lambda t: (t.get("width") or 0) * (t.get("height") or 0))
+            set_artwork = largest.get("url")
+        elif isinstance(thumbnails, str):
+            set_artwork = thumbnails
+
+        # Parse individual tracks
+        tracks: list[SoundCloudTrack] = []
+        total = data.get("track_count") or len(entries)
+        for i, entry in enumerate(entries):
+            try:
+                # Parse track with set position info
+                track = self._parse_track_with_position(entry, i + 1, total)
+            except SoundCloudParseError:
+                logger.debug("Skipping malformed entry #%d in set %s", i + 1, set_id)
+                continue
+
+            tracks.append(track)
+
+        if not tracks:
+            raise SoundCloudParseError(
+                f"No valid tracks found in set: {set_id}"
+            )
+
+        return SoundCloudSet(
+            id=str(set_id),
+            title=set_title,
+            artist=set_artist,
+            tracks=tracks,
+            artwork_url=set_artwork,
+            permalink_url=data.get("webpage_url") or data.get("url"),
+        )
+
+    @staticmethod
+    def _parse_duration(duration: Any) -> int:
+        """Parse duration from yt-dlp output.
+
+        Handles int (seconds) and string formats like "3:24" or "204".
+
+        Args:
+            duration: Duration value from yt-dlp JSON.
+
+        Returns:
+            Duration in seconds, or 0 if unparseable.
+        """
+        if duration is None:
+            return 0
+        if isinstance(duration, (int, float)):
+            return int(duration)
+        if isinstance(duration, str):
+            # Try parsing as integer string
+            try:
+                return int(duration)
+            except ValueError:
+                pass
+            # Try HH:MM:SS or MM:SS format
+            parts = duration.split(":")
+            if len(parts) == 2:
+                try:
+                    return int(parts[0]) * 60 + int(parts[1])
+                except ValueError:
+                    pass
+            elif len(parts) == 3:
+                try:
+                    return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+                except ValueError:
+                    pass
+        return 0

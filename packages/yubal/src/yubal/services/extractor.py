@@ -11,7 +11,7 @@ from yubal.models.cancel import CancelToken
 from yubal.models.enums import ContentKind, MatchResult, SkipReason, VideoType
 from yubal.models.progress import ExtractProgress
 from yubal.models.track import PlaylistInfo, TrackMetadata, UnavailableTrack
-from yubal.models.ytmusic import Album, AlbumTrack, Artist, PlaylistTrack, Thumbnail
+from yubal.models.media import Album, AlbumTrack, Artist, PlaylistTrack, Thumbnail
 from yubal.services.cache import ExtractionCache
 from yubal.utils.url import parse_playlist_id, parse_video_id
 

@@ -74,3 +74,19 @@ class CancellationError(YubalError):
     Raised when a download or extraction operation is cancelled
     via a CancelToken.
     """
+
+
+class SoundCloudParseError(YubalError):
+    """Failed to parse SoundCloud metadata.
+
+    Raised when yt-dlp returns data that cannot be parsed into
+    expected SoundCloud track metadata.
+    """
+
+
+class SoundCloudUnavailableError(YubalError):
+    """SoundCloud track is unavailable.
+
+    Raised when a SoundCloud track is private, region-restricted,
+    or has been removed.
+    """

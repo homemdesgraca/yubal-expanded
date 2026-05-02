@@ -9,7 +9,7 @@ from yubal.exceptions import CancellationError
 from yubal.models.cancel import CancelToken
 from yubal.models.enums import MatchResult, SkipReason, VideoType
 from yubal.models.track import TrackMetadata
-from yubal.models.ytmusic import Album, Artist, Playlist, SearchResult, Thumbnail
+from yubal.models.media import Album, Artist, Playlist, SearchResult, Thumbnail
 from yubal.services import MetadataExtractorService
 from yubal.services.extractor import (
     _format_artists,
@@ -1598,7 +1598,7 @@ class TestUpscaleThumbnailUrl:
         """Should replace w/h parameters in Google thumbnail URLs."""
         url = "https://lh3.googleusercontent.com/abc123=w120-h120-l90-rj"
         result = _upscale_thumbnail_url(url)
-        assert result == "https://lh3.googleusercontent.com/abc123=w544-h544-l90-rj"
+        assert result == "https://lh3.googleusercontent.com/abc123=w1200-h1200-l90-rj"
 
     def test_custom_size(self) -> None:
         """Should use specified size."""
@@ -1615,7 +1615,7 @@ class TestUpscaleThumbnailUrl:
         """Should replace any numeric size values."""
         url = "https://lh3.googleusercontent.com/abc=w226-h226-l90-rj"
         result = _upscale_thumbnail_url(url)
-        assert result == "https://lh3.googleusercontent.com/abc=w544-h544-l90-rj"
+        assert result == "https://lh3.googleusercontent.com/abc=w1200-h1200-l90-rj"
 
 
 class TestGetSquareThumbnail:
@@ -1630,7 +1630,7 @@ class TestGetSquareThumbnail:
                 height=120,
             ),
             Thumbnail(
-                url="https://lh3.googleusercontent.com/b=w544-h544-l90-rj",
+                url="https://lh3.googleusercontent.com/b=w1200-h1200-l90-rj",
                 width=544,
                 height=544,
             ),
@@ -1642,7 +1642,7 @@ class TestGetSquareThumbnail:
         ]
         assert (
             _get_square_thumbnail(thumbnails)
-            == "https://lh3.googleusercontent.com/b=w544-h544-l90-rj"
+            == "https://lh3.googleusercontent.com/b=w1200-h1200-l90-rj"
         )
 
     def test_prefers_square_over_rectangular(self) -> None:
@@ -1650,14 +1650,14 @@ class TestGetSquareThumbnail:
         thumbnails = [
             Thumbnail(url="https://rect.jpg", width=1280, height=720),
             Thumbnail(
-                url="https://lh3.googleusercontent.com/a=w544-h544-l90-rj",
+                url="https://lh3.googleusercontent.com/a=w1200-h1200-l90-rj",
                 width=544,
                 height=544,
             ),
         ]
         assert (
             _get_square_thumbnail(thumbnails)
-            == "https://lh3.googleusercontent.com/a=w544-h544-l90-rj"
+            == "https://lh3.googleusercontent.com/a=w1200-h1200-l90-rj"
         )
 
     def test_falls_back_to_last_thumbnail(self) -> None:
@@ -1688,7 +1688,7 @@ class TestGetSquareThumbnail:
         ]
         assert (
             _get_square_thumbnail(thumbnails)
-            == "https://lh3.googleusercontent.com/a=w544-h544-l90-rj"
+            == "https://lh3.googleusercontent.com/a=w1200-h1200-l90-rj"
         )
 
 

@@ -10,7 +10,7 @@ from collections.abc import Callable
 from unittest.mock import MagicMock
 
 import pytest
-from yubal.models.ytmusic import (
+from yubal.models.media import (
     Album,
     AlbumRef,
     AlbumTrack,

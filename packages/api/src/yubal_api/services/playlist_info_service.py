@@ -6,7 +6,7 @@ from pathlib import Path
 
 from yubal import ContentKind, parse_playlist_id
 from yubal.client import YTMusicClient
-from yubal.models.ytmusic import Playlist
+from yubal.models.media import Playlist
 from yubal.utils.url import parse_video_id
 
 from yubal_api.domain.job import ContentInfo

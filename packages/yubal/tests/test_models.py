@@ -4,7 +4,7 @@ import pytest
 from pydantic import ValidationError
 from yubal.models.enums import VideoType
 from yubal.models.track import TrackMetadata
-from yubal.models.ytmusic import AlbumRef, Playlist
+from yubal.models.media import AlbumRef, Playlist
 
 
 class TestVideoType:

@@ -71,7 +71,7 @@ This document describes how yubal implements its core features. Yubal is a self-
 | File | Role |
 |------|------|
 | `packages/yubal/src/yubal/client.py` | YouTube Music API client |
-| `packages/yubal/src/yubal/models/ytmusic.py` | Domain models (Album, Playlist, Track, etc.) |
+| `packages/yubal/src/yubal/models/media.py` | Domain models (Album, Playlist, Track, etc.) |
 | `packages/yubal/src/yubal/exceptions.py` | Domain-specific exceptions |
 
 ---

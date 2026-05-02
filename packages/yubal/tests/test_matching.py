@@ -14,7 +14,7 @@ from yubal.lib.matching import (
     match_title,
     normalize_title,
 )
-from yubal.models.ytmusic import AlbumTrack, Artist, SearchResult
+from yubal.models.media import AlbumTrack, Artist, SearchResult
 
 # ============================================================================
 # Fixtures
