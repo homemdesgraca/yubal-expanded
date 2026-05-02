@@ -30,5 +30,6 @@
   "prettier.requireConfig": true,
   "[just]": {
     "editor.defaultFormatter": "nefrob.vscode-just-syntax"
-  }
+  },
+  "python-envs.defaultEnvManager": "ms-python.python:venv"
 }

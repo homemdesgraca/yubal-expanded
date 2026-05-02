@@ -22,3 +22,7 @@ __pycache__/
 /skills-lock.json
 /.agents/
 /.claude/
+PLAN.md
+INFO.md
+TODO.md
+test_real
