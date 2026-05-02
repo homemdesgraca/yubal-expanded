@@ -1,0 +1,1 @@
+Use ./docs/summary.md for a clear summary of how the project works.
