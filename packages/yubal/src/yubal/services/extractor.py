@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
-from yubal.client import MusicBrainzProtocol, YTMusicProtocol
+from yubal.client import MusicBrainzProtocol, SoundCloudProtocol, YTMusicProtocol
 from yubal.exceptions import CancellationError, TrackParseError
 from yubal.lib.matching import find_best_album_match, find_track_by_fuzzy_title
 from yubal.models.cancel import CancelToken
@@ -21,7 +21,7 @@ from yubal.models.media import (
     Thumbnail,
 )
 from yubal.services.cache import ExtractionCache
-from yubal.utils.url import parse_playlist_id, parse_video_id
+from yubal.utils.url import is_soundcloud_url, parse_playlist_id, parse_video_id
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +113,7 @@ class MetadataExtractorService:
         *,
         download_ugc: bool = False,
         musicbrainz_client: MusicBrainzProtocol | None = None,
+        soundcloud_client: SoundCloudProtocol | None = None,
     ) -> None:
         """Initialize the service.
 
@@ -121,10 +122,13 @@ class MetadataExtractorService:
             download_ugc: If True, extract UGC tracks as unofficial instead of skipping.
             musicbrainz_client: Optional MusicBrainz client for metadata enrichment.
                                 Used to enrich SoundCloud baseline metadata.
+            soundcloud_client: Optional SoundCloud client for extracting SoundCloud
+                               metadata. If provided, SoundCloud URLs are handled.
         """
         self._client = client
         self._download_ugc = download_ugc
         self._musicbrainz_client = musicbrainz_client
+        self._soundcloud_client = soundcloud_client
 
     # ============================================================================
     # PUBLIC API - Main entry points for metadata extraction
@@ -189,6 +193,11 @@ class MetadataExtractorService:
             >>> for progress in extractor.extract(url):
             ...     print(f"[{progress.current}/{progress.total}]")
         """
+        # SoundCloud URL handling
+        if is_soundcloud_url(url) and self._soundcloud_client is not None:
+            yield from self._extract_soundcloud_as_progress(url, cancel_token)
+            return
+
         # Check if this is a single track URL
         video_id = parse_video_id(url)
         if video_id:
@@ -460,6 +469,89 @@ class MetadataExtractorService:
             track=metadata,
             playlist_info=playlist_info,
         )
+
+    # ============================================================================
+    # SOUNDCLOUD EXTRACTION
+    # ============================================================================
+
+    def _extract_soundcloud_as_progress(
+        self, url: str, cancel_token: CancelToken | None
+    ) -> Iterator[ExtractProgress]:
+        """Extract metadata from a SoundCloud URL and yield as ExtractProgress.
+
+        Handles both single track URLs and set (playlist) URLs.
+
+        Args:
+            url: SoundCloud track or set URL.
+            cancel_token: Optional cancellation token.
+
+        Yields:
+            ExtractProgress for each track.
+        """
+        logger.info("Extracting metadata from SoundCloud URL: %s", url)
+        self._check_cancellation(cancel_token)
+
+        result = self._soundcloud_client.extract(url)
+
+        self._check_cancellation(cancel_token)
+
+        if isinstance(result, SoundCloudTrack):
+            # Single track
+            self._check_cancellation(cancel_token)
+            metadata = self._enrich_track_with_musicbrainz(result)
+            cover_url = None
+            if result.artwork_url:
+                cover_url = _upscale_thumbnail_url(result.artwork_url)
+            yield ExtractProgress(
+                current=1,
+                total=1,
+                playlist_total=1,
+                skipped_by_reason={},
+                track=metadata,
+                playlist_info=PlaylistInfo(
+                    playlist_id="",
+                    title=result.title,
+                    cover_url=cover_url,
+                    kind=ContentKind.TRACK,
+                    author=None,
+                    unavailable_tracks=[],
+                ),
+            )
+        else:
+            # SoundCloudSet
+            set_result = result
+            tracks = set_result.tracks
+            total = len(tracks)
+            logger.debug(
+                "Extracting %d tracks from SoundCloud set", total
+            )
+
+            cover_url = None
+            if set_result.artwork_url:
+                cover_url = _upscale_thumbnail_url(set_result.artwork_url)
+            playlist_info = PlaylistInfo(
+                playlist_id="",
+                title=set_result.title,
+                cover_url=cover_url,
+                kind=ContentKind.PLAYLIST,
+                author=set_result.artist,
+                unavailable_tracks=[],
+            )
+
+            for idx, sc_track in enumerate(tracks, start=1):
+                self._check_cancellation(cancel_token)
+                logger.debug(
+                    "Processing track %d/%d: %s", idx, total, sc_track.title
+                )
+                metadata = self._enrich_track_with_musicbrainz(sc_track)
+                yield ExtractProgress(
+                    current=idx,
+                    total=total,
+                    playlist_total=total,
+                    skipped_by_reason={},
+                    track=metadata,
+                    playlist_info=playlist_info,
+                )
 
     # ============================================================================
     # CONTENT CLASSIFICATION - Distinguish albums from curated playlists
@@ -1137,7 +1229,7 @@ class MetadataExtractorService:
         artists = [track.artist] if track.artist else ["Unknown Artist"]
 
         return TrackMetadata(
-            source_video_id=track.id,
+            source_video_id=track.permalink_url or track.id,
             omv_video_id=None,
             atv_video_id=None,
             title=track.title,

@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from contextlib import nullcontext
 from pathlib import Path
 
-from yubal.client import YTMusicClient, YTMusicProtocol
+from yubal.client import SoundCloudClient, SoundCloudProtocol, YTMusicClient, YTMusicProtocol
 from yubal.config import PlaylistDownloadConfig
 from yubal.exceptions import CancellationError
 from yubal.models.cancel import CancelToken
@@ -85,6 +85,7 @@ class PlaylistDownloadService:
         composer: PlaylistArtifactsProtocol | None = None,
         replaygain: ReplayGainProtocol | None = None,
         cookies_path: Path | None = None,
+        soundcloud_client: SoundCloudProtocol | None = None,
     ) -> None:
         """Initialize the service.
 
@@ -96,16 +97,21 @@ class PlaylistDownloadService:
             composer: Optional composer (creates default if not provided).
             replaygain: Optional ReplayGain service (creates default if not provided).
             cookies_path: Optional path to cookies.txt for authentication.
+            soundcloud_client: Optional SoundCloud client for SoundCloud URLs.
         """
         self._config = config
 
-        # Create client if needed
+        # Create clients if needed
         if client is None:
             client = YTMusicClient(cookies_path=cookies_path)
+        if soundcloud_client is None:
+            soundcloud_client = SoundCloudClient()
 
         # Create services
         self._extractor = extractor or MetadataExtractorService(
-            client, download_ugc=config.download.download_ugc
+            client,
+            download_ugc=config.download.download_ugc,
+            soundcloud_client=soundcloud_client,
         )
         self._downloader = downloader or DownloadService(
             config.download, cookies_path=cookies_path
