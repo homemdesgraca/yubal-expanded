@@ -1,4 +1,4 @@
-import { YOUTUBE_URL_PATTERN } from "@/lib/url";
+import { isValidUrl } from "@/lib/url";
 import { Input } from "@heroui/react";
 import { LinkIcon } from "lucide-react";
 
@@ -15,7 +15,7 @@ export function UrlInput({
   disabled,
   placeholder = "Album or playlist URL",
 }: Props) {
-  const isValid = value === "" || YOUTUBE_URL_PATTERN.test(value);
+  const isValid = value === "" || isValidUrl(value);
 
   return (
     <Input
@@ -27,7 +27,7 @@ export function UrlInput({
       isDisabled={disabled}
       isInvalid={!isValid}
       radius="lg"
-      errorMessage={!isValid ? "Enter a valid YouTube URL" : undefined}
+      errorMessage={!isValid ? "Enter a valid URL" : undefined}
       startContent={<LinkIcon className="text-foreground-400 h-4 w-4" />}
     />
   );
