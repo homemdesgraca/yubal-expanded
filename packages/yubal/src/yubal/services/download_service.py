@@ -583,19 +583,26 @@ class DownloadService:
         """
         match track.match_result:
             case MatchResult.UNMATCHED:
+                video_id = track.video_id or "unknown"
+                # Use SoundCloud ID for filename if it's a full URL
+                if video_id.startswith("http") and track.source_video_id:
+                    video_id = track.source_video_id
                 return build_unmatched_track_path(
                     base=self._config.base_path,
                     artist=track.primary_album_artist,
                     title=track.title,
-                    video_id=track.video_id or "unknown",
+                    video_id=video_id,
                     ascii_filenames=self._config.ascii_filenames,
                 )
             case MatchResult.UNOFFICIAL:
+                video_id = track.video_id or "unknown"
+                if video_id.startswith("http") and track.source_video_id:
+                    video_id = track.source_video_id
                 return build_unofficial_track_path(
                     base=self._config.base_path,
                     artist=track.primary_album_artist,
                     title=track.title,
-                    video_id=track.video_id or "unknown",
+                    video_id=video_id,
                     ascii_filenames=self._config.ascii_filenames,
                 )
             case MatchResult.MATCHED:
