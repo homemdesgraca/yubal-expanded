@@ -1,21 +1,21 @@
 """Tests for API schemas."""
 
 import pytest
-from yubal_api.schemas.jobs import validate_youtube_music_url
+from yubal_api.schemas.jobs import validate_supported_url
 
 
-class TestValidateYouTubeMusicUrl:
-    """Tests for YouTube Music URL validation."""
+class TestValidateSupportedUrl:
+    """Tests for supported URL validation."""
 
     @pytest.mark.parametrize(
         "url",
         [
-            # Playlist URLs
+            # YouTube Music playlist URLs
             "https://music.youtube.com/playlist?list=OLAK5uy_test123",
             "https://www.youtube.com/playlist?list=PLtest123",
             "https://m.youtube.com/playlist?list=PLtest123",
             "https://music.youtube.com/browse/MPREb_test123",
-            # Single track URLs
+            # YouTube Music single track URLs
             "https://music.youtube.com/watch?v=Vgpv5PtWsn4",
             "https://www.youtube.com/watch?v=GkTWxDB21cA",
             "https://youtube.com/watch?v=GkTWxDB21cA",
@@ -32,6 +32,10 @@ class TestValidateYouTubeMusicUrl:
             "https://youtube.com/live/dQw4w9WgXcQ",
             "https://youtube.com/embed/dQw4w9WgXcQ",
             "https://youtube-nocookie.com/embed/dQw4w9WgXcQ",
+            # SoundCloud track URLs
+            "https://soundcloud.com/artist/track-name",
+            "https://soundcloud.com/artist/sets/playlist-name",
+            "https://snd.sc/abc123",
         ],
         ids=[
             "music_youtube_playlist",
@@ -51,11 +55,14 @@ class TestValidateYouTubeMusicUrl:
             "youtube_live",
             "youtube_embed",
             "youtube_nocookie_embed",
+            "soundcloud_track",
+            "soundcloud_set",
+            "soundcloud_short",
         ],
     )
     def test_accepts_valid_urls(self, url: str) -> None:
-        """Should accept valid YouTube Music URLs."""
-        assert validate_youtube_music_url(url) == url
+        """Should accept valid YouTube Music and SoundCloud URLs."""
+        assert validate_supported_url(url) == url
 
     @pytest.mark.parametrize(
         "url",
@@ -70,9 +77,9 @@ class TestValidateYouTubeMusicUrl:
     def test_rejects_invalid_urls(self, url: str) -> None:
         """Should reject invalid URLs."""
         with pytest.raises(ValueError, match="Invalid URL"):
-            validate_youtube_music_url(url)
+            validate_supported_url(url)
 
     def test_strips_whitespace(self) -> None:
         """Should strip whitespace from URL."""
         url = "  https://music.youtube.com/watch?v=abc123  "
-        assert validate_youtube_music_url(url) == url.strip()
+        assert validate_supported_url(url) == url.strip()

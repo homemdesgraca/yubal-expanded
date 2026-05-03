@@ -3,7 +3,17 @@
 import logging
 
 import pytest
-from conftest import MockMusicBrainzClient, MockSoundCloudClient, MockYTMusicClient
+import importlib
+import sys
+from pathlib import Path
+
+_test_dir = Path(__file__).parent
+_spec = importlib.util.spec_from_file_location("conftest", _test_dir / "conftest.py")
+_conftest = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_conftest)
+MockMusicBrainzClient = _conftest.MockMusicBrainzClient
+MockSoundCloudClient = _conftest.MockSoundCloudClient
+MockYTMusicClient = _conftest.MockYTMusicClient
 from pydantic import ValidationError
 from yubal.exceptions import CancellationError, PlaylistParseError
 from yubal.models.cancel import CancelToken

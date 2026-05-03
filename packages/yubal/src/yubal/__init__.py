@@ -31,7 +31,7 @@ Examples:
 from pathlib import Path
 
 # Internal imports (not exported)
-from yubal.client import YTMusicClient as _YTMusicClient
+from yubal.client import MusicBrainzProtocol, YTMusicClient as _YTMusicClient
 from yubal.config import APIConfig, AudioCodec, DownloadConfig, PlaylistDownloadConfig
 from yubal.exceptions import (
     AuthenticationRequiredError,
@@ -146,6 +146,7 @@ def create_downloader(
 def create_playlist_downloader(
     config: PlaylistDownloadConfig,
     cookies_path: Path | None = None,
+    musicbrainz_client: MusicBrainzProtocol | None = None,
 ) -> PlaylistDownloadService:
     """Create a configured playlist download service.
 
@@ -156,6 +157,9 @@ def create_playlist_downloader(
         config: Playlist download configuration.
         cookies_path: Optional path to cookies.txt for YouTube Music authentication.
                      Enables access to private playlists when provided.
+        musicbrainz_client: Optional MusicBrainz client for metadata enrichment.
+                            Used to enrich SoundCloud baseline metadata with
+                            authoritative MB data (year, track number, album name).
 
     Returns:
         A configured PlaylistDownloadService instance.
@@ -183,7 +187,9 @@ def create_playlist_downloader(
         service = create_playlist_downloader(config, cookies_path=Path("cookies.txt"))
         ```
     """
-    return PlaylistDownloadService(config, cookies_path=cookies_path)
+    return PlaylistDownloadService(
+        config, cookies_path=cookies_path, musicbrainz_client=musicbrainz_client
+    )
 
 
 __all__ = [
