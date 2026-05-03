@@ -1275,7 +1275,7 @@ class MetadataExtractorService:
         artists = mb_artists if mb_artists else ([track.artist] if track.artist else [])
 
         return TrackMetadata(
-            source_video_id=track.id,
+            source_video_id=track.permalink_url or track.id,
             omv_video_id=None,
             atv_video_id=None,
             title=enrichment.get("mb_title") or track.title,
