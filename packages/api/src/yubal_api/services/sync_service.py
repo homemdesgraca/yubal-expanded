@@ -23,6 +23,8 @@ from yubal import (
     TrackMetadata,
     create_playlist_downloader,
 )
+from yubal.client import MusicBrainzClient, MusicBrainzProtocol
+from yubal.config import MusicBrainzConfig
 from yubal.models.enums import ContentKind
 from yubal.models.results import get_audio_bitrate
 from yubal.models.track import PlaylistInfo
@@ -276,10 +278,21 @@ class SyncService:
     download_ugc: bool = False
     cache_path: Path | None = None
     audio_quality: int = 0
+    musicbrainz_enabled: bool = True
+    musicbrainz_match_threshold: float = 70.0
+    musicbrainz_client: MusicBrainzProtocol | None = field(default=None, init=False)
     _codec: AudioCodec = field(init=False)
 
     def __post_init__(self) -> None:
         self._codec = AudioCodec(self.audio_format)
+        if self.musicbrainz_enabled:
+            self.musicbrainz_client = MusicBrainzClient(
+                MusicBrainzConfig(
+                    enabled=True,
+                    search_limit=5,
+                    match_threshold=self.musicbrainz_match_threshold,
+                )
+            )
 
     def run(
         self,
@@ -319,6 +332,7 @@ class SyncService:
             download_ugc=self.download_ugc,
             cache_path=self.cache_path,
             audio_quality=self.audio_quality,
+            musicbrainz_client=self.musicbrainz_client,
         )
         return workflow.execute()
 
@@ -350,6 +364,7 @@ class _SyncWorkflow:
     download_ugc: bool
     cache_path: Path | None
     audio_quality: int
+    musicbrainz_client: MusicBrainzProtocol | None
 
     # Workflow state
     content_info: ContentInfo | None = field(default=None, init=False)
@@ -406,7 +421,11 @@ class _SyncWorkflow:
             apply_replaygain=self.apply_replaygain,
             cache_path=self.cache_path,
         )
-        return create_playlist_downloader(config, cookies_path=self.cookies_path)
+        return create_playlist_downloader(
+            config,
+            cookies_path=self.cookies_path,
+            musicbrainz_client=self.musicbrainz_client,
+        )
 
     def _handle_progress(self, progress: PlaylistProgress) -> None:
         """Route progress update to appropriate phase handler."""

@@ -96,6 +96,18 @@ class Settings(BaseSettings):
         description="Apply ReplayGain tags using rsgain",
     )
 
+    # MusicBrainz settings
+    musicbrainz_enabled: bool = Field(
+        default=True,
+        description="Enable MusicBrainz enrichment for SoundCloud tracks",
+    )
+    musicbrainz_match_threshold: int = Field(
+        default=70,
+        ge=0,
+        le=100,
+        description="Minimum similarity score (0-100) for a confident MB match",
+    )
+
     # Temp directory
     temp: Path = Field(
         default_factory=lambda: Path(tempfile.gettempdir()) / "yubal",
