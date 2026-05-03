@@ -5,8 +5,15 @@ from collections.abc import Iterator
 from contextlib import nullcontext
 from pathlib import Path
 
-from yubal.client import SoundCloudClient, SoundCloudProtocol, YTMusicClient, YTMusicProtocol
-from yubal.config import PlaylistDownloadConfig
+from yubal.client import (
+    MusicBrainzClient,
+    MusicBrainzProtocol,
+    SoundCloudClient,
+    SoundCloudProtocol,
+    YTMusicClient,
+    YTMusicProtocol,
+)
+from yubal.config import MusicBrainzConfig, PlaylistDownloadConfig
 from yubal.exceptions import CancellationError
 from yubal.models.cancel import CancelToken
 from yubal.models.enums import ContentKind, DownloadStatus
@@ -86,6 +93,7 @@ class PlaylistDownloadService:
         replaygain: ReplayGainProtocol | None = None,
         cookies_path: Path | None = None,
         soundcloud_client: SoundCloudProtocol | None = None,
+        musicbrainz_client: MusicBrainzProtocol | None = None,
     ) -> None:
         """Initialize the service.
 
@@ -98,6 +106,9 @@ class PlaylistDownloadService:
             replaygain: Optional ReplayGain service (creates default if not provided).
             cookies_path: Optional path to cookies.txt for authentication.
             soundcloud_client: Optional SoundCloud client for SoundCloud URLs.
+            musicbrainz_client: Optional MusicBrainz client for metadata enrichment.
+                                Used to enrich SoundCloud baseline metadata with
+                                authoritative MB data (year, track number, album name).
         """
         self._config = config
 
@@ -112,6 +123,7 @@ class PlaylistDownloadService:
             client,
             download_ugc=config.download.download_ugc,
             soundcloud_client=soundcloud_client,
+            musicbrainz_client=musicbrainz_client,
         )
         self._downloader = downloader or DownloadService(
             config.download, cookies_path=cookies_path
