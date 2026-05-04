@@ -4,7 +4,7 @@ This is **yubal-expanded**, an ongoing fork of [Yubal](https://github.com/guille
 - [x] Download album cover and lyrics
 - [x] Enrich metadata with MusicBrainz
 - [X] Provide information preview about tracks and sets through /api/info
-- [ ] Use Cover Art Archive when possible through enrichment
+- [X] Use Cover Art Archive when possible through enrichment
 - [ ] Adapt extension for Soundcloud URLs
 - [ ] Final Soundcloud implementation tests
 - [ ] More UI features (control library location, file format, library structure, etc.)
