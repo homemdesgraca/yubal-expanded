@@ -1236,13 +1236,45 @@ class MusicBrainzClient:
         rg = release.get("release-group") or {}
         release_group_mbid = rg.get("id")
 
+        # Extract track number from release media
+        # MB track IDs don't always match the recording ID, so we match
+        # by title within the first release's first media.
+        # Prefer "Digital Media" format (most reliable track numbering).
+        track_number = None
+        total_tracks = None
+        recording_title = recording.get("title", "")
+
+        # search_recordings uses medium-list/track-list, get_recording_by_id uses media/track
+        media_list = release.get("media") or release.get("medium-list") or []
+
+        # Sort media: prefer Digital Media, then fall back to others
+        def media_sort_key(media):
+            fmt = (media.get("format") or "").lower()
+            return 0 if fmt == "digital media" else 1
+
+        media_list = sorted(media_list, key=media_sort_key)
+
+        for media in media_list:
+            track_list = media.get("track") or media.get("track-list") or []
+            total_tracks = len(track_list)
+            for track in track_list:
+                if track.get("title", "") == recording_title:
+                    try:
+                        track_number = int(track.get("number", 0))
+                    except (ValueError, TypeError):
+                        # e.g. "A2" for vinyl side numbering
+                        track_number = None
+                    break
+            if track_number is not None:
+                break
+
         return {
             "mbid": mbid,
             "release_mbid": release_mbid,
             "release_group_mbid": release_group_mbid,
             "year": year,
-            "track_number": None,
-            "total_tracks": None,
+            "track_number": track_number,
+            "total_tracks": total_tracks,
             "mb_title": recording.get("title", ""),
             "mb_artists": artists,
             "mb_release_title": release_title,

@@ -101,10 +101,12 @@ def build_track_path(
     album_folder = f"{year} - {safe_album}" if year else safe_album
 
     # Build track filename
+    # Use track_number when available; fallback to 00 for unmatched/MB-enriched
+    # tracks where MB doesn't provide track position
     if track_number is not None:
         track_name = f"{track_number:02d} - {safe_title}"
     else:
-        track_name = safe_title
+        track_name = f"00 - {safe_title}"
 
     return base / safe_artist / album_folder / track_name
 
