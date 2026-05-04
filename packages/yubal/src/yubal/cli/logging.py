@@ -36,3 +36,6 @@ def setup_logging(verbose: bool = False, console: Console | None = None) -> None
 
     root_logger.setLevel(level)
     root_logger.addHandler(handler)
+
+    # Suppress noisy INFO logs from third-party libraries
+    logging.getLogger("musicbrainzngs").setLevel(logging.WARNING)

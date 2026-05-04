@@ -85,6 +85,9 @@ def setup_logging() -> None:
         uvicorn_logger.handlers = [handler]
         uvicorn_logger.propagate = False
 
+    # Suppress noisy INFO logs from third-party libraries
+    logging.getLogger("musicbrainzngs").setLevel(logging.WARNING)
+
 
 def setup_log_streaming(log_buffer: LogBuffer) -> None:
     """Attach buffer handler to capture logs for SSE streaming."""
