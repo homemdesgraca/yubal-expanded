@@ -1,6 +1,7 @@
 """Tests for MetadataExtractorService."""
 
 import logging
+from unittest.mock import patch
 
 import pytest
 import importlib
@@ -1881,7 +1882,10 @@ class TestSoundCloudExtraction:
         assert tracks[0].title == "TWICE REMOVED"
         assert tracks[1].title == "Psychoboost"
 
-    def test_soundcloud_track_with_musicbrainz_enrichment(self) -> None:
+    @patch("yubal.services.extractor.coverartarchive.get_cover_url_from_caa", return_value=None)
+    def test_soundcloud_track_with_musicbrainz_enrichment(
+        self, mock_caa
+    ) -> None:
         """Should enrich SoundCloud track with MusicBrainz data."""
         sc_track = SoundCloudTrack(
             id="12345",

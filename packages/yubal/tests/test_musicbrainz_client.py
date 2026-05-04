@@ -420,8 +420,9 @@ class TestMetadataExtractorServiceEnrichment:
         assert metadata.title == "Test Track"
         assert metadata.match_result.value == "unmatched"
 
+    @patch("yubal.services.extractor.coverartarchive.get_cover_url_from_caa", return_value=None)
     def test_enrich_track_builds_enriched_metadata(
-        self, mock_ytmusic_client: MagicMock
+        self, mock_caa, mock_ytmusic_client: MagicMock
     ) -> None:
         """Should build enriched metadata when MusicBrainz returns a match."""
         enrichment = {
@@ -508,7 +509,10 @@ class TestMetadataExtractorServiceEnrichment:
         assert metadata.match_result.value == "unmatched"
         assert metadata.mbid is None
 
-    def test_build_enriched_metadata_combines_data(self) -> None:
+    @patch("yubal.services.extractor.coverartarchive.get_cover_url_from_caa", return_value=None)
+    def test_build_enriched_metadata_combines_data(
+        self, mock_caa
+    ) -> None:
         """Should combine SoundCloud baseline with MusicBrainz enrichment."""
         mock_ytm = MagicMock()
         mock_ytm.get_playlist.return_value = {"title": "Test", "tracks": []}
