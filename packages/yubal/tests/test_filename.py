@@ -383,7 +383,7 @@ class TestBuildTrackPath:
     # === Optional Parameters (None values) ===
 
     def test_build_path_without_track_number(self) -> None:
-        """Should handle None track number (no prefix)."""
+        """Should handle None track number with 00 prefix fallback."""
         result = build_track_path(
             base=Path("/music"),
             artist="Artist",
@@ -392,7 +392,7 @@ class TestBuildTrackPath:
             track_number=None,
             title="Song",
         )
-        assert result == Path("/music/Artist/2024 - Album/Song")
+        assert result == Path("/music/Artist/2024 - Album/00 - Song")
 
     def test_build_path_without_year(self) -> None:
         """Should omit year prefix when year is None."""
@@ -407,7 +407,7 @@ class TestBuildTrackPath:
         assert result == Path("/music/Artist/Album/01 - Song")
 
     def test_build_path_without_year_and_track_number(self) -> None:
-        """Should handle both None year and None track number."""
+        """Should handle both None year and None track number (00 prefix fallback)."""
         result = build_track_path(
             base=Path("/music"),
             artist="Artist",
@@ -416,7 +416,7 @@ class TestBuildTrackPath:
             track_number=None,
             title="Song",
         )
-        assert result == Path("/music/Artist/Album/Song")
+        assert result == Path("/music/Artist/Album/00 - Song")
 
     # === Empty String Fallbacks ===
 
