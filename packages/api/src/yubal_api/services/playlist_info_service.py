@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from yubal import ContentKind, parse_playlist_id
+from yubal.client import SoundCloudClient, SoundCloudTrack, SoundCloudSet
+from yubal.services.extractor import _upscale_thumbnail_url
 from yubal.client import SoundCloudClient, YTMusicClient
 from yubal.models.media import Playlist
 from yubal.utils.url import is_soundcloud_url, parse_video_id
@@ -184,3 +186,53 @@ class PlaylistInfoService:
             thumbnail_url=(track.thumbnails[-1].url if track.thumbnails else None),
             kind=ContentKind.TRACK,
         )
+
+    def _get_soundcloud_content_info(self, url: str) -> ContentInfo:
+        """Build ContentInfo from a SoundCloud URL (track or set).
+
+        Lightweight preview: extracts metadata via yt-dlp without running
+        the full extraction pipeline (no MusicBrainz enrichment, no download).
+
+        Args:
+            url: SoundCloud track or set URL.
+
+        Returns:
+            ContentInfo with metadata from the URL.
+        """
+        result = self._soundcloud_client.extract(url)
+
+        if isinstance(result, SoundCloudTrack):
+            # Single track
+            upload_year = None
+            if result.upload_date and len(result.upload_date) >= 4:
+                try:
+                    upload_year = int(result.upload_date[:4])
+                except ValueError:
+                    pass
+
+            return ContentInfo(
+                title=result.title,
+                artist=result.artist or "Unknown Artist",
+                year=upload_year,
+                track_count=1,
+                playlist_id="",
+                url=url,
+                thumbnail_url=_upscale_thumbnail_url(result.artwork_url) if result.artwork_url else None,
+                kind=ContentKind.TRACK,
+            )
+        else:
+            # SoundCloudSet
+            cover_url = None
+            if result.artwork_url:
+                cover_url = _upscale_thumbnail_url(result.artwork_url)
+
+            return ContentInfo(
+                title=result.title,
+                artist=result.artist or "Unknown Artist",
+                year=None,
+                track_count=len(result.tracks),
+                playlist_id="",
+                url=url,
+                thumbnail_url=cover_url,
+                kind=ContentKind.PLAYLIST,
+            )
