@@ -12,6 +12,7 @@ from yubal.models.cancel import CancelToken
 from yubal.models.enums import ContentKind, MatchResult, SkipReason, VideoType
 from yubal.models.progress import ExtractProgress
 from yubal.models.track import PlaylistInfo, TrackMetadata, UnavailableTrack
+from yubal.utils import coverartarchive
 from yubal.models.media import (
     Album,
     AlbumTrack,
@@ -88,6 +89,63 @@ class AlbumMatch:
 
     album_id: str
     atv_video_id: str | None = None
+
+
+def _fetch_cover_with_caa_fallback(
+    release_mbid: str | None,
+    release_group_mbid: str | None,
+    fallback_url: str | None,
+    *,
+    title: str | None = None,
+) -> str | None:
+    """Fetch cover art, trying CAA first, then falling back to a URL.
+
+    Priority order:
+    1. CAA release MBID (front cover URL — 307 redirect, works with urllib)
+    2. CAA release-group MBID (JSON listing, pick best thumbnail URL)
+    3. Fallback URL (e.g., yt-dlp artwork_url, upscaled)
+
+    Args:
+        release_mbid: MusicBrainz release MBID.
+        release_group_mbid: MusicBrainz release group MBID.
+        fallback_url: URL to try if CAA yields nothing.
+        title: Track title for logging purposes.
+
+    Returns:
+        Cover URL string (CAA or upscaled fallback), or None if no cover.
+    """
+    # Try CAA if we have MBIDs
+    if release_mbid or release_group_mbid:
+        caa_url = coverartarchive.get_cover_url_from_caa(
+            release_mbid=release_mbid,
+            release_group_mbid=release_group_mbid,
+        )
+        if caa_url is not None:
+            if release_mbid:
+                logger.info(
+                    "Cover art source: CAA (release MBID) for '%s'",
+                    title or "unknown",
+                )
+            else:
+                logger.info(
+                    "Cover art source: CAA (release-group MBID) for '%s'",
+                    title or "unknown",
+                )
+            return caa_url
+
+    # Fallback to yt-dlp's artwork URL
+    if fallback_url:
+        logger.info(
+            "Cover art source: yt-dlp (fallback) for '%s'",
+            title or "unknown",
+        )
+        return _upscale_thumbnail_url(fallback_url, 1200)
+
+    logger.info(
+        "Cover art source: none for '%s'",
+        title or "unknown",
+    )
+    return None
 
 
 class MetadataExtractorService:
@@ -499,9 +557,7 @@ class MetadataExtractorService:
             # Single track
             self._check_cancellation(cancel_token)
             metadata = self._enrich_track_with_musicbrainz(result)
-            cover_url = None
-            if result.artwork_url:
-                cover_url = _upscale_thumbnail_url(result.artwork_url)
+            # Use the cover_url from enriched metadata (CAA or yt-dlp)
             yield ExtractProgress(
                 current=1,
                 total=1,
@@ -511,7 +567,7 @@ class MetadataExtractorService:
                 playlist_info=PlaylistInfo(
                     playlist_id="",
                     title=result.title,
-                    cover_url=cover_url,
+                    cover_url=metadata.cover_url if metadata else None,
                     kind=ContentKind.TRACK,
                     author=None,
                     unavailable_tracks=[],
@@ -1254,7 +1310,12 @@ class MetadataExtractorService:
 
         Combines baseline SoundCloud data with authoritative MusicBrainz
         metadata. MB data takes precedence for: year, track_number,
-        album name (release title), MBIDs.
+        album name (release title), MBIDs, and cover art.
+
+        Cover art priority:
+        1. CAA release MBID (front cover via 307 redirect)
+        2. CAA release-group MBID (JSON listing, best thumbnail)
+        3. yt-dlp artwork_url from SoundCloud (fallback)
 
         Args:
             track: SoundCloud track with baseline metadata.
@@ -1263,9 +1324,15 @@ class MetadataExtractorService:
         Returns:
             TrackMetadata with MusicBrainz-enriched data.
         """
-        cover_url = track.artwork_url
-        if cover_url:
-            cover_url = _upscale_thumbnail_url(cover_url, 1200)
+        # Try CAA first, then fall back to yt-dlp's artwork_url
+        release_mbid = enrichment.get("release_mbid")
+        release_group_mbid = enrichment.get("release_group_mbid")
+        cover_url = _fetch_cover_with_caa_fallback(
+            release_mbid=release_mbid,
+            release_group_mbid=release_group_mbid,
+            fallback_url=track.artwork_url,
+            title=track.title,
+        )
 
         # Use MB release title as album name if available
         album_name = enrichment.get("mb_release_title") or track.title
@@ -1290,6 +1357,6 @@ class MetadataExtractorService:
             duration_seconds=track.duration_seconds,
             match_result=MatchResult.MATCHED,
             mbid=enrichment.get("mbid"),
-            release_mbid=enrichment.get("release_mbid"),
-            release_group_mbid=enrichment.get("release_group_mbid"),
+            release_mbid=release_mbid,
+            release_group_mbid=release_group_mbid,
         )

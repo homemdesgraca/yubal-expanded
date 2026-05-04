@@ -6,6 +6,12 @@ Not re-exported at the top-level `yubal` package.
 
 from yubal.utils.cleanup import cleanup_part_files
 from yubal.utils.cookies import cookies_to_ytmusic_auth, is_authenticated_cookies
+from yubal.utils.coverartarchive import (
+    fetch_cover_from_caa,
+    fetch_cover_from_release_group_mbid,
+    fetch_cover_from_release_mbid,
+    get_cover_url_from_caa,
+)
 from yubal.utils.cover import (
     clear_cover_cache,
     fetch_cover,
@@ -26,8 +32,12 @@ __all__ = [
     "clear_cover_cache",
     "cookies_to_ytmusic_auth",
     "fetch_cover",
+    "fetch_cover_from_caa",
+    "fetch_cover_from_release_group_mbid",
+    "fetch_cover_from_release_mbid",
     "format_playlist_filename",
     "get_cover_cache_size",
+    "get_cover_url_from_caa",
     "is_authenticated_cookies",
     "is_single_track_url",
     "parse_playlist_id",
