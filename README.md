@@ -1,8 +1,12 @@
-This is **yubal-expanded**, an ongoing fork of [Yubal](https://github.com/guillevc/yubal) by "guillevc", focused initially on adding SoundCloud functionality, but will probably soon have more features that would, originally, deviate from the objective of the original amazing Yubal project.
+This is **yubal-expanded**, an ongoing fork of [Yubal](https://github.com/guillevc/yubal) by guillevc, focused initially on adding SoundCloud functionality, but will probably soon have more features that would, originally, deviate from the objective of the original amazing Yubal project.
 
 - [x] Download single tracks from SoundCloud
 - [x] Download album cover and lyrics
-- [ ] Enrich metadata with MusicBrainz
+- [x] Enrich metadata with MusicBrainz
+- [X] Provide information preview about tracks and sets through /api/info
+- [ ] Use Cover Art Archive when possible through enrichment
+- [ ] Adapt extension for Soundcloud URLs
+- [ ] Final Soundcloud implementation tests
 - [ ] More UI features (control library location, file format, library structure, etc.)
 
 ---
