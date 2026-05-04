@@ -14,6 +14,11 @@ members = ["packages/*"]
 [tool.uv.sources]
 yubal = { workspace = true }
 
+[project.optional-dependencies]
+caa = [
+    "requests>=2.31.0",
+]
+
 [dependency-groups]
 dev = [
     "ruff>=0.14.11",
