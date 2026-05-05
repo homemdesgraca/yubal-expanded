@@ -199,7 +199,9 @@ class PlaylistInfoService:
         preview = self._soundcloud_client._fetch_set_preview(url)
         title = preview.get("title") or "Unknown"
         artwork_url = preview.get("artwork_url")
-        thumbnail_url = _upscale_thumbnail_url(artwork_url) if artwork_url else None
+        # Don't upscale: oembed returns the actual available size;
+        # upsizing t500x500 to t1200x1200 would 404 on SoundCloud CDN.
+        thumbnail_url = artwork_url
         return PlaylistMetadata(title=title, thumbnail_url=thumbnail_url)
 
     def _get_soundcloud_content_info(self, url: str) -> ContentInfo:
