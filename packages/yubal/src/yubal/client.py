@@ -8,6 +8,7 @@ import subprocess
 import time
 from collections import OrderedDict
 from pathlib import Path
+import requests
 from typing import Any, Protocol, cast
 
 from ytmusicapi import YTMusic
@@ -738,6 +739,33 @@ class SoundCloudClient:
         """
         data = self._run_dump_json(url)
         return self._parse_track(data)
+
+    def _fetch_set_preview(self, url: str) -> dict[str, str | None]:
+        """Quickly fetch set-level metadata via SoundCloud oembed API.
+
+        Returns title, artwork_url, and author_name without iterating
+        through all tracks. Used for subscription previews where full
+        track listing is not needed.
+
+        Returns:
+            Dict with keys 'title', 'artwork_url', 'author_name',
+            or empty values if the API call fails.
+        """
+        try:
+            oembed_url = (
+                f"https://soundcloud.com/oembed?url={url}&format=json"
+            )
+            resp = requests.get(oembed_url, timeout=5)
+            if resp.status_code == 200:
+                data = resp.json()
+                return {
+                    "title": data.get("title"),
+                    "artwork_url": data.get("thumbnail_url"),
+                    "author_name": data.get("author_name"),
+                }
+        except Exception:
+            pass
+        return {"title": None, "artwork_url": None, "author_name": None}
 
     def get_set(self, url: str) -> SoundCloudSet:
         """Fetch metadata for a SoundCloud set (playlist).

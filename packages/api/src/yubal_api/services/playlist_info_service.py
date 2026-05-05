@@ -67,6 +67,9 @@ class PlaylistInfoService:
             UnsupportedPlaylistError: If playlist type is not supported (422).
             UpstreamAPIError: If API request fails (502).
         """
+        if is_soundcloud_url(url):
+            return self._get_playlist_metadata_soundcloud(url)
+
         playlist_id = parse_playlist_id(url)
         playlist = self._client.get_playlist(playlist_id)
         title = playlist.title or "Unknown Playlist"
@@ -186,6 +189,18 @@ class PlaylistInfoService:
             thumbnail_url=(track.thumbnails[-1].url if track.thumbnails else None),
             kind=ContentKind.TRACK,
         )
+
+    def _get_playlist_metadata_soundcloud(self, url: str) -> PlaylistMetadata:
+        """Get playlist metadata from a SoundCloud URL (track or set).
+
+        Lightweight: uses SoundCloud oembed API for a fast preview
+        (sub-second), falling back to yt-dlp if oembed fails.
+        """
+        preview = self._soundcloud_client._fetch_set_preview(url)
+        title = preview.get("title") or "Unknown"
+        artwork_url = preview.get("artwork_url")
+        thumbnail_url = _upscale_thumbnail_url(artwork_url) if artwork_url else None
+        return PlaylistMetadata(title=title, thumbnail_url=thumbnail_url)
 
     def _get_soundcloud_content_info(self, url: str) -> ContentInfo:
         """Build ContentInfo from a SoundCloud URL (track or set).
