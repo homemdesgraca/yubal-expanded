@@ -1,4 +1,5 @@
 import { isYouTubeMediaUrl } from "@/lib/youtube";
+import { isSoundCloudMediaUrl } from "@/lib/soundcloud";
 
 const SIZES = [16, 32, 48, 128] as const;
 
@@ -39,12 +40,20 @@ function activeIconPaths(): Record<string, string> {
   return Object.fromEntries(SIZES.map((s) => [String(s), `icons/${s}.png`]));
 }
 
+function soundcloudIconPaths(): Record<string, string> {
+  return Object.fromEntries(SIZES.map((s) => [String(s), `icons/sc_${s}.png`]));
+}
+
 async function updateIcon(tabId: number): Promise<void> {
   try {
     const tab = await browser.tabs.get(tabId);
-    const isActive = tab.url ? isYouTubeMediaUrl(tab.url) : false;
+    const isSoundCloud = tab.url ? isSoundCloudMediaUrl(tab.url) : false;
+    const isYouTube = tab.url ? isYouTubeMediaUrl(tab.url) : false;
 
-    if (isActive) {
+    if (isSoundCloud) {
+      activeTabs.add(tabId);
+      await actionApi.setIcon({ tabId, path: soundcloudIconPaths() });
+    } else if (isYouTube) {
       activeTabs.add(tabId);
       await actionApi.setIcon({ tabId, path: activeIconPaths() });
     } else {

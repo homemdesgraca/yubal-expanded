@@ -13,6 +13,14 @@ from yubal.utils.url import is_soundcloud_url, parse_video_id
 
 from yubal_api.domain.job import ContentInfo
 
+# SoundCloud URL patterns for track vs set detection
+_SC_SET_RE = __import__("re").compile(
+    r"^(?:https?://)?(?:www\.)?soundcloud\.com/([a-zA-Z0-9_-]+)/sets/([a-zA-Z0-9_-]+)"
+)
+_SC_SHORT_RE = __import__("re").compile(
+    r"^(?:https?://)?snd\.sc/([a-zA-Z0-9_-]+)"
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -207,8 +215,9 @@ class PlaylistInfoService:
     def _get_soundcloud_content_info(self, url: str) -> ContentInfo:
         """Build ContentInfo from a SoundCloud URL (track or set).
 
-        Lightweight preview: extracts metadata via yt-dlp without running
-        the full extraction pipeline (no MusicBrainz enrichment, no download).
+        Lightweight preview: uses SoundCloud oembed API for both tracks
+        and sets (sub-second). No yt-dlp needed.
+        No full extraction pipeline (no MusicBrainz enrichment, no download).
 
         Args:
             url: SoundCloud track or set URL.
@@ -216,6 +225,52 @@ class PlaylistInfoService:
         Returns:
             ContentInfo with metadata from the URL.
         """
+        # Detect track vs set from URL pattern
+        is_set = (
+            _SC_SET_RE.search(url) is not None
+        )
+        is_short = _SC_SHORT_RE.search(url) is not None
+        is_track = not is_set and not is_short
+
+        # Use oembed for both — fast, no yt-dlp needed
+        preview = self._soundcloud_client._fetch_set_preview(url)
+        title = preview.get("title")
+        author = preview.get("author_name")
+        artwork = preview.get("artwork_url")
+
+        if title:
+            # oembed succeeded
+            cover_url = None
+            if artwork:
+                # Don't upscale: oembed returns actual available size;
+                # upsizing t500x500 to t1200x1200 would 404 on SoundCloud CDN.
+                cover_url = artwork
+
+            if is_track:
+                return ContentInfo(
+                    title=title,
+                    artist=author or "Unknown Artist",
+                    year=None,
+                    track_count=1,
+                    playlist_id="",
+                    url=url,
+                    thumbnail_url=cover_url,
+                    kind=ContentKind.TRACK,
+                )
+
+            return ContentInfo(
+                title=title,
+                artist=author or "Unknown Artist",
+                year=None,
+                track_count=None,
+                playlist_id="",
+                url=url,
+                thumbnail_url=cover_url,
+                kind=ContentKind.PLAYLIST,
+            )
+
+        # oembed didn't return data (could be a single track URL).
+        # Fall back to yt-dlp for tracks.
         result = self._soundcloud_client.extract(url)
 
         if isinstance(result, SoundCloudTrack):
@@ -238,7 +293,7 @@ class PlaylistInfoService:
                 kind=ContentKind.TRACK,
             )
         else:
-            # SoundCloudSet
+            # SoundCloudSet — oembed failed, use yt-dlp as last resort
             cover_url = None
             if result.artwork_url:
                 cover_url = _upscale_thumbnail_url(result.artwork_url)

@@ -2,6 +2,7 @@ import "@/assets/index.css";
 import van from "vanjs-core";
 import { yubalUrl, yubalUrlDraft } from "@/lib/storage";
 import { isYouTubeUrl } from "@/lib/youtube";
+import { isSoundCloudUrl } from "@/lib/soundcloud";
 import { SetupPage } from "@/components/setup-page";
 import { ConnectionErrorPage } from "@/components/connection-error-page";
 import { UnsupportedUrlPage } from "@/components/unsupported-url-page";
@@ -60,7 +61,7 @@ async function refresh() {
   const tab = tabs[0];
   const tabUrl = tab?.url ?? "";
 
-  if (!isYouTubeUrl(tabUrl)) {
+  if (!isYouTubeUrl(tabUrl) && !isSoundCloudUrl(tabUrl)) {
     view.val = UnsupportedUrlPage({ instanceUrl: baseUrl, onSettings });
     return;
   }
