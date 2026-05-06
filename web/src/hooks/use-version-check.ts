@@ -72,7 +72,7 @@ export function useVersionCheck(): { data: VersionInfo | null } {
 
     const controller = new AbortController();
 
-    fetch("https://api.github.com/repos/guillevc/yubal/releases/latest", {
+    fetch("https://api.github.com/repos/homemdesgraca/yubal-expanded/releases/latest", {
       signal: controller.signal,
     })
       .then((res) => {

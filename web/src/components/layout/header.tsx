@@ -136,7 +136,7 @@ export function Header() {
             as="a"
             disableAnimation
             size="sm"
-            href="https://github.com/guillevc/yubal"
+            href="https://github.com/homemdesgraca/yubal-expanded"
             target="_blank"
             rel="noopener noreferrer"
             variant="light"
@@ -149,7 +149,7 @@ export function Header() {
             }
             className="text-small"
           >
-            Star on GitHub
+            Star the fork
           </Button>
         </NavbarItem>
         <NavbarItem className="hidden sm:flex">
@@ -197,14 +197,14 @@ export function Header() {
         </NavbarMenuItem>
         <NavbarMenuItem>
           <HeroUILink
-            href="https://github.com/guillevc/yubal"
+            href="https://github.com/homemdesgraca/yubal-expanded"
             isExternal
             showAnchorIcon
             color="foreground"
             className="w-full"
             size="lg"
           >
-            Star on GitHub
+            Star the fork
           </HeroUILink>
         </NavbarMenuItem>
       </NavbarMenu>

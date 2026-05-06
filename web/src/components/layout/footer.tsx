@@ -25,6 +25,19 @@ export function Footer() {
             <KofiIcon className="-mt-px inline h-4 w-4" />{" "}
             <span className="group-hover:underline">Ko-fi</span>
           </a>
+          {" "}(support original author)
+        </p>
+        <p className="text-foreground-400 font-mono text-xs">
+          SoundCloud compatibility by{" "}
+          <a
+            href="https://github.com/homemdesgraca"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group text-primary hover:text-foreground"
+          >
+            <GithubIcon className="-mt-px inline h-4 w-4" />{" "}
+            <span className="group-hover:underline">homemdesgraca</span>
+          </a>
         </p>
         <p className="text-foreground-400 font-mono text-xs">
           Powered by{" "}
@@ -47,7 +60,7 @@ export function Footer() {
           </a>
           {" · "}
           <a
-            href={`https://github.com/guillevc/yubal/${__IS_RELEASE__ ? `releases/tag/${__VERSION__}` : `commit/${__COMMIT_SHA__}`}`}
+            href={`https://github.com/homemdesgraca/yubal-expanded/${__IS_RELEASE__ ? `releases/tag/${__VERSION__}` : `commit/${__COMMIT_SHA__}`}`}
             target="_blank"
             rel="noopener noreferrer"
             className="hover:text-foreground hover:underline"
