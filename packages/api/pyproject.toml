@@ -6,6 +6,7 @@ dependencies = [
   "croniter>=6.0.0",
   "fastapi>=0.127.1",
   "pydantic-settings>=2.12.0",
+  "musicbrainzngs>=0.7.1",
   "rich>=14.2.0",
   "sqlmodel>=0.0.24",
   "tzdata>=2025.1",
