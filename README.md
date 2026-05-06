@@ -12,6 +12,8 @@ A fork of [Yubal](https://github.com/guillevc/yubal) by guillevc, adding SoundCl
 
 ### Planned features
 
+- [ ] More config options directly from the WebUI
+- [ ] Subscribing to ListenBrainz auto-generated playlists
 
 ## Docker Quick Start
 
