@@ -27,6 +27,7 @@ from yubal.utils.filename import (
     build_unmatched_track_path,
     build_unofficial_track_path,
 )
+from yubal.utils.url import parse_soundcloud_id
 
 logger = logging.getLogger(__name__)
 
@@ -584,9 +585,13 @@ class DownloadService:
         match track.match_result:
             case MatchResult.UNMATCHED:
                 video_id = track.video_id or "unknown"
-                # Use SoundCloud ID for filename if it's a full URL
-                if video_id.startswith("http") and track.source_video_id:
-                    video_id = track.source_video_id
+                # If video_id is a full URL (SoundCloud permalink), extract
+                # the short numeric ID for the filename instead of using the
+                # full URL which would break the filesystem path.
+                if video_id.startswith("http"):
+                    sc_id = parse_soundcloud_id(video_id)
+                    if sc_id and sc_id[1]:
+                        video_id = sc_id[1]
                 return build_unmatched_track_path(
                     base=self._config.base_path,
                     artist=track.primary_album_artist,
@@ -596,8 +601,10 @@ class DownloadService:
                 )
             case MatchResult.UNOFFICIAL:
                 video_id = track.video_id or "unknown"
-                if video_id.startswith("http") and track.source_video_id:
-                    video_id = track.source_video_id
+                if video_id.startswith("http"):
+                    sc_id = parse_soundcloud_id(video_id)
+                    if sc_id and sc_id[1]:
+                        video_id = sc_id[1]
                 return build_unofficial_track_path(
                     base=self._config.base_path,
                     artist=track.primary_album_artist,

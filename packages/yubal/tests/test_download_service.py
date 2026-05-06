@@ -741,3 +741,42 @@ class TestCancellation:
 
             with pytest.raises(CancellationError, match="Download cancelled"):
                 downloader.download("test_video_id", output_path, cancel_token=token)
+
+    def test_unmatched_soundcloud_track_no_url_in_filename(
+        self,
+        download_config: DownloadConfig,
+        tmp_path: Path,
+    ) -> None:
+        """Unmatched SoundCloud tracks should not have the full permalink URL in the filename.
+
+        When a SoundCloud track has no ATV/OMV video ID, the video_id property
+        falls back to source_video_id which is the full SoundCloud permalink URL.
+        The filename must use a short ID, not the full URL, to avoid broken paths
+        like "_Unmatched/https/soundcloud.com/...".
+
+        Regression test for: SoundCloud track filename containing full permalink URL.
+        """
+        track = TrackMetadata(
+            source_video_id="https://soundcloud.com/c0ncernn/smoking-all-day",
+            omv_video_id=None,
+            atv_video_id=None,
+            title="Smoking All Day",
+            artists=["C0NCERNN"],
+            album="Smoking All Day",
+            album_artists=["C0NCERNN"],
+            match_result=MatchResult.UNMATCHED,
+        )
+        mock_downloader = MockDownloader()
+        service = DownloadService(download_config, mock_downloader)
+
+        result = service.download_track(track)
+
+        assert result.status == DownloadStatus.SUCCESS
+        _, output_path = mock_downloader.downloads[0]
+        path_str = str(output_path)
+        # The full URL must NOT appear in the filename
+        assert "https://soundcloud.com" not in path_str
+        assert "soundcloud.com" not in path_str
+        # The path should still be valid and contain the track info
+        assert "_Unmatched" in path_str
+        assert "C0NCERNN - Smoking All Day" in path_str
