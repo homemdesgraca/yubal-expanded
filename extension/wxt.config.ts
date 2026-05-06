@@ -3,7 +3,7 @@ import { defineConfig } from "wxt";
 
 export default defineConfig({
   zip: {
-    name: "yubal-extension",
+    name: "yubal-extended-extension",
     artifactTemplate: "{{name}}-{{packageVersion}}-{{browser}}.zip",
     sourcesTemplate: "{{name}}-{{packageVersion}}-sources.zip",
     zipSources: true,
@@ -14,8 +14,8 @@ export default defineConfig({
     developmentIndicator: false,
   },
   manifest: {
-    name: "yubal",
-    description: "Send YouTube URLs to your yubal instance",
+    name: "yubal-extended",
+    description: "Download tracks and playlists from YouTube Music and SoundCloud",
     homepage_url: "https://yubal.guillevc.dev",
     permissions: ["storage", "activeTab", "tabs"],
     browser_specific_settings: {
