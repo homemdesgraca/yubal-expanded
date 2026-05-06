@@ -1,5 +1,6 @@
 import { listSubscriptions } from "@/api/subscriptions";
 import { AnimatedThemeToggler } from "@/components/magicui/animated-theme-toggler";
+import { ListenBrainzIcon } from "@/components/icons";
 import { CookieDropdown } from "@/features/cookies/cookie-dropdown";
 import { useCookies } from "@/features/cookies/use-cookies";
 import { useJobs } from "@/features/jobs/jobs-context";
@@ -30,6 +31,12 @@ const navItems = [
   { label: "Downloads", startIcon: DownloadIcon, href: "/" },
   { label: "My playlists", startIcon: ListMusicIcon, href: "/playlists" },
 ];
+
+const listenbrainzNavItem = {
+  label: "ListenBrainz",
+  href: "/listenbrainz",
+  startIcon: ListenBrainzIcon,
+};
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -108,6 +115,18 @@ export function Header() {
             </Link>
           </NavbarItem>
         ))}
+        <NavbarItem
+          className="group"
+          isActive={currentPath === listenbrainzNavItem.href}
+        >
+          <Link
+            to={listenbrainzNavItem.href}
+            className="text-foreground-400 text-small group-data-[active=true]:text-foreground tap-highlight-transparent active:opacity-disabled inline-flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium hover:opacity-80"
+          >
+            <listenbrainzNavItem.startIcon className="h-4 w-4" />
+            {listenbrainzNavItem.label}
+          </Link>
+        </NavbarItem>
       </NavbarContent>
 
       {/* Actions */}
@@ -185,6 +204,16 @@ export function Header() {
             </Link>
           </NavbarMenuItem>
         ))}
+        <NavbarMenuItem isActive={currentPath === listenbrainzNavItem.href}>
+          <Link
+            to={listenbrainzNavItem.href}
+            onClick={() => setIsMenuOpen(false)}
+            className={`flex w-full items-center gap-2 text-lg ${currentPath === listenbrainzNavItem.href ? "text-primary" : "text-foreground"}`}
+          >
+            <listenbrainzNavItem.startIcon className="h-5 w-5" />
+            {listenbrainzNavItem.label}
+          </Link>
+        </NavbarMenuItem>
         <NavbarMenuItem>
           <CookieDropdown
             variant="mobile"

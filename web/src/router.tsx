@@ -2,6 +2,7 @@
 
 import { Footer } from "@/components/layout/footer";
 import { Header } from "@/components/layout/header";
+import { ListenBrainzPage } from "@/pages/listenbrainz";
 import { basePath } from "@/lib/base-path";
 import { JobsPage } from "@/pages/jobs";
 import { SubscriptionsPage } from "@/pages/subscriptions";
@@ -63,7 +64,17 @@ const subscriptionsRoute = createRoute({
   component: SubscriptionsPage,
 });
 
-const routeTree = rootRoute.addChildren([jobsRoute, subscriptionsRoute]);
+const listenbrainzRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/listenbrainz",
+  component: ListenBrainzPage,
+});
+
+const routeTree = rootRoute.addChildren([
+  jobsRoute,
+  subscriptionsRoute,
+  listenbrainzRoute,
+]);
 
 export const router = createRouter({ routeTree, basepath: basePath || "/" });
 
