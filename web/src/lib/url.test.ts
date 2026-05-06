@@ -49,7 +49,7 @@ const VALID_SOUNDCLOUD_URLS = [
   "http://soundcloud.com/artist/track-name",
   "https://soundcloud.com/artist/sets/my-set",
   "https://www.soundcloud.com/artist/sets/my-set",
-] as const;
+];
 
 const INVALID_URLS = [
   ["empty string", ""],
@@ -60,7 +60,7 @@ const INVALID_URLS = [
   ["plain text", "not a url"],
   ["missing protocol", "youtube.com/watch?v=abc"],
   ["YouTube browse (not music)", "https://youtube.com/browse/VLPLxyz"],
-] as const;
+];
 
 describe("isValidUrl", () => {
   describe("valid YouTube Music URLs", () => {
