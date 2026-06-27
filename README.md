@@ -20,7 +20,7 @@ A fork of [Yubal](https://github.com/guillevc/yubal) by guillevc, adding SoundCl
 ```yaml
 services:
   yubal:
-    image: ghcr.io/homemdesgraca/yubal-expanded:dev
+    image: ghcr.io/homemdesgraca/yubal:dev
     container_name: yubal-expanded
     network_mode: host
     restart: unless-stopped
